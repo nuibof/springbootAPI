@@ -1,0 +1,50 @@
+{
+  "phòng trống": [
+    "Dạ bên em hiện có nhiều phòng trống ạ!",
+    "Anh/chị có thể chọn loại phòng tuỳ ý ạ!",
+    "Hiện tại phòng Deluxe và Suite còn trống ạ!",
+    "Chúng em còn nhiều phòng sẵn sàng phục vụ!",
+    "Bạn có muốn đặt phòng ngay bây giờ không ạ?",
+    "Phòng đang có sẵn, anh/chị có cần tư vấn thêm không?",
+    "Dạ còn phòng trống, anh/chị yên tâm nha!",
+    "Phòng đang chờ đón anh/chị ạ!",
+    "Dạ hiện em kiểm tra thấy vẫn còn phòng trống!",
+    "Hiện giờ vẫn còn nhiều loại phòng sẵn sàng ạ!"
+  ],
+  "hết phòng": [
+    "Dạ rất tiếc, bên em đã hết phòng trống rồi ạ.",
+    "Xin lỗi, hiện tại không còn phòng phù hợp.",
+    "Bên em vừa hết phòng, mong anh/chị thông cảm.",
+    "Hiện hệ thống đang full phòng ạ.",
+    "Dạ hiện bên em không còn phòng trống nữa.",
+    "Rất tiếc, tất cả các phòng đã được đặt kín.",
+    "Phòng đã full ạ, em xin lỗi quý khách.",
+    "Dạ xin lỗi, bên em đã kín lịch phòng hôm nay.",
+    "Chúng em đã hết phòng trống, mong anh/chị thông cảm!",
+    "Tất cả các phòng đã được đặt hết trong hôm nay."
+  ],
+  "đặt phòng": [
+    "Anh/chị muốn đặt loại phòng nào và vào ngày nào ạ?",
+    "Mình cần em tư vấn thêm về phòng nào không ạ?",
+    "Anh/chị cho em xin thời gian đặt phòng ạ?",
+    "Dạ mình muốn check-in ngày nào ạ?",
+    "Anh/chị chọn Deluxe, Suite hay Standard ạ?",
+    "Mình cần số lượng phòng cho bao nhiêu người ạ?",
+    "Anh/chị đặt trước bao nhiêu ngày vậy ạ?",
+    "Dạ em có thể hỗ trợ mình đặt nhanh trong hôm nay luôn!",
+    "Anh/chị muốn view biển hay view thành phố ạ?",
+    "Mình cần phòng có tiện ích nào đặc biệt không ạ?"
+  ],
+  "mặc định": [
+    "Xin lỗi, em chưa hiểu ý của anh/chị, vui lòng nhắn rõ hơn?",
+    "Bạn vui lòng cung cấp thêm chi tiết giúp em nhé?",
+    "Anh/chị có thể nhắn cụ thể nhu cầu hơn không ạ?",
+    "Em chưa hiểu yêu cầu của mình, mình có thể nói rõ hơn được không ạ?",
+    "Xin lỗi, hiện em chưa nắm được thông tin mình cần hỏi.",
+    "Anh/chị cần hỗ trợ vấn đề nào ạ?",
+    "Mình đang cần tư vấn đặt phòng hay hỗ trợ dịch vụ khác ạ?",
+    "Dạ anh/chị vui lòng diễn giải lại giúp em với nha.",
+    "Em chưa hiểu yêu cầu mình đang cần ạ, anh/chị nói rõ thêm được không?",
+    "Anh/chị ơi, mình có thể gửi nội dung chi tiết hơn không ạ?"
+  ]
+}

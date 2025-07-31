@@ -12,12 +12,13 @@ public class ProductInputDTO {
     private BigDecimal price;
     private int categoryId;
     private String status;
+    private Integer gender;
     private List<ColorVariantDTO> colors;
 
     @Data
     public static class ColorVariantDTO {
-        private int id; // colorId
+        private int id;
         private String image;
-        private List<String> sizes; // ["S", "M", ...]
+        private List<String> sizes;
     }
 }

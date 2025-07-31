@@ -2,6 +2,8 @@ package api.rest.SeasFit.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -15,20 +17,20 @@ public class ProductVariant {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Quan hệ nhiều-1 với product
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
-    // Quan hệ nhiều-1 với color
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "color_id", nullable = false)
     private Color color;
 
-    // Quan hệ nhiều-1 với size
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "size_id", nullable = false)
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "size_id")
     private Size size;
+
+    @Column(name = "price", precision = 12, scale = 2)
+    private BigDecimal price;
 
     private Integer quantity;
 

@@ -1,8 +1,11 @@
 package api.rest.SeasFit.dto;
 
+import api.rest.SeasFit.entity.User;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -12,4 +15,5 @@ public class DashboardDTO {
     private int totalProducts;
     private int totalOrders;
     private int lowStockProducts;
+    private List<User> latestUsers;
 }

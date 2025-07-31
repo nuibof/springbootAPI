@@ -1,11 +1,13 @@
 package api.rest.SeasFit.config;
 
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.web.config.EnableSpringDataWebSupport;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
+@EnableSpringDataWebSupport(pageSerializationMode = EnableSpringDataWebSupport.PageSerializationMode.VIA_DTO)
 public class WebConfig implements WebMvcConfigurer {
 
     @Override
@@ -20,11 +22,11 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addMapping("/**")
                 .allowedOrigins(
                         "http://localhost:5173",
-                        "http://192.168.100.239:5173", // IP LAN của bạn (nếu dùng)
-                        "http://183.81.117.108:5173"   // IP public
+                        "http://192.168.100.239:5173",
+                        "http://118.71.23.211:5173",
+                        "http://171.249.204.190:5173"
                 )
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                .allowedHeaders("*")
                 .allowedHeaders("*")
                 .allowCredentials(true);
     }

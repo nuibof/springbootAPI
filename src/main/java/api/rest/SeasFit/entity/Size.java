@@ -16,4 +16,7 @@ public class Size {
     private Integer id;
 
     private String label;
+
+    public Size(String sizeStr) {
+    }
 }

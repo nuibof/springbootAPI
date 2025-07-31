@@ -25,12 +25,10 @@ public class ChatResponseLoader {
     public String getReply(String keyword) {
         List<String> replyList = responses.getOrDefault(keyword, responses.get("mặc định"));
 
-        // Nếu chưa có queue cho keyword này thì tạo mới
         smartQueues.putIfAbsent(keyword, shuffleQueue(replyList));
 
         Queue<String> queue = smartQueues.get(keyword);
 
-        // Nếu hết queue (hết câu để xoay), shuffle lại
         if (queue.isEmpty()) {
             queue = shuffleQueue(replyList);
             smartQueues.put(keyword, queue);
@@ -41,7 +39,7 @@ public class ChatResponseLoader {
 
     private Queue<String> shuffleQueue(List<String> list) {
         List<String> shuffled = new ArrayList<>(list);
-        Collections.shuffle(shuffled); // Xáo trộn thứ tự
+        Collections.shuffle(shuffled);
         return new LinkedList<>(shuffled);
     }
 }

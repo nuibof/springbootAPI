@@ -52,13 +52,12 @@ public class AuthController {
         String token = jwtUtil.generateToken(user.getUserName(), user.getRole());
         System.out.println("Login successful for user: " + user.getFullName());
 
-        // ✅ Dùng ResponseCookie để set cookie rõ ràng hơn
         ResponseCookie jwtCookie = ResponseCookie.from("jwtToken", token)
                 .httpOnly(true)
-                .secure(false) // true nếu dùng HTTPS
+                .secure(false)
                 .path("/")
-                .maxAge(18000) // 5h
-                .sameSite("Lax") // hoặc "Strict"
+                .maxAge(18000)
+                .sameSite("Lax")
                 .build();
         response.setHeader(HttpHeaders.SET_COOKIE, jwtCookie.toString());
 
@@ -67,7 +66,7 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<?> logout(HttpServletResponse response) {
-        // ✅ Xoá cookie
+
         ResponseCookie clearJwt = ResponseCookie.from("jwtToken", "")
                 .httpOnly(true)
                 .secure(false)
@@ -79,6 +78,7 @@ public class AuthController {
 
         return ResponseEntity.ok("Đăng xuất thành công");
     }
+
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody User user) {
@@ -92,6 +92,7 @@ public class AuthController {
         String encodedPassword = passwordEncoder.encode(user.getPassword());
         user.setPassword(encodedPassword);
         user.setCreatedAt(LocalDateTime.now());
+        user.setRole("ROLE_USER");
         userService.save(user);
         System.out.println("User registered: " + user.getUserName());
 

@@ -15,7 +15,7 @@ public class OllamaClient {
 
     public String callOllama(String prompt) {
         Map<String, Object> request = Map.of(
-                "model", "gemma",        // Hoặc mixtral, mistral, llama3 tuỳ chọn
+                "model", "gemma",
                 "prompt", prompt,
                 "stream", false
         );

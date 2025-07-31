@@ -8,12 +8,13 @@ import java.util.Optional;
 
 public interface FavoriteRepository extends JpaRepository<Favorite, Long> {
 
-    // Custom query to find favorites by user ID
     List<Favorite> findByUserId(Long userId);
 
-    // Custom query to find a favorite by user ID and product ID
     Optional<Favorite> findByUserIdAndProductId(Long userId, Long productId);
 
-    // Count by product ID
     int countByProductId(Long productId);
+
+    void deleteByUserIdAndProductId(Long userId, Long productId);
+
+    void deleteByProductId(Long productId);
 }

@@ -19,7 +19,9 @@ public class Color {
     private String name;
     private String hexCode;
 
-    private String imageUrl; // nếu có ảnh riêng cho color
+    private String imageUrl;
 
 
+    public Color(String name, String hex) {
+    }
 }

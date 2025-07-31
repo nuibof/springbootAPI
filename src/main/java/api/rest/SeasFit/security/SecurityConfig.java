@@ -34,8 +34,10 @@ import java.util.Map;
 @EnableWebSecurity
 public class SecurityConfig {
 
+    @Value("${frontend.url}")
     //@Value("http://192.168.100.48:5173")
-    @Value("http://localhost:5173")
+    //@Value("http://118.71.23.211:5173")
+    //@Value("http://192.168.100.239:5173")
     private String frontendUrl;
 
     private final JwtUtil jwtUtil;
@@ -93,7 +95,7 @@ public class SecurityConfig {
 
                             Cookie cookie = new Cookie("jwtToken", token);
                             cookie.setHttpOnly(true);
-                            cookie.setSecure(false); // ✅ để hoạt động qua HTTPS (Cloudflare tunnel)
+                            cookie.setSecure(false);
                             cookie.setPath("/");
                             cookie.setMaxAge(18000);
                             response.addCookie(cookie);
@@ -135,7 +137,7 @@ public class SecurityConfig {
     @Bean
     public CorsFilter corsFilter() {
         CorsConfiguration config = new CorsConfiguration();
-        config.addAllowedOrigin(frontendUrl); // ✅ cho phép FE truy cập
+        config.addAllowedOrigin(frontendUrl);
         config.setAllowCredentials(true);
         config.addAllowedHeader("*");
         config.addAllowedMethod("*");
@@ -147,7 +149,9 @@ public class SecurityConfig {
 
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**")
-                .allowedOrigins("http://localhost:5173") // domain FE
+                .allowedOrigins("http://localhost:5173")
+                .allowedOrigins("http://118.71.23.211:5173")
+                .allowedOrigins("http://192.168.100.239:5173")
                 .allowedMethods("*")
                 .allowCredentials(true);
     }

@@ -1,14 +1,18 @@
 package api.rest.SeasFit.service;
 
-import api.rest.SeasFit.dto.ProductDetailDTO;
-import api.rest.SeasFit.dto.ProductInputDTO;
+import api.rest.SeasFit.dto.*;
 import api.rest.SeasFit.entity.*;
 import api.rest.SeasFit.repository.*;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
-
+import java.math.BigDecimal;
 import java.util.*;
+
 import java.util.stream.Collectors;
 
 @Service
@@ -21,9 +25,11 @@ public class ProductService {
     private final FavoriteRepository favoriteRepository;
     private final ReviewRepository reviewRepository;
     private final UserRepository userRepository;
-    private final CategoryRepository categoryRepository;
-    private final ColorRepository colorRepository;
-    private final SizeRepository sizeRepository;
+    private final CartItemRepository cartItemRepository;
+    private final InventoryRepository inventoryRepository;
+
+
+
 
 
     public List<Product> findAll() {
@@ -34,13 +40,166 @@ public class ProductService {
         return productRepository.findById(id);
     }
 
+    public List<Product> findByGender(String gender) {
+        return productRepository.findByGender(gender);
+    }
+    @Transactional
     public Product save(Product entity) {
         return productRepository.save(entity);
     }
 
-    public void deleteById(Long id) {
-        productRepository.deleteById(id);
+    @Transactional
+    public void deleteById(Long productId) {
+        // Xoá dữ liệu liên quan trước
+        reviewRepository.deleteByProductId(productId);
+        favoriteRepository.deleteByProductId(productId);
+        cartItemRepository.deleteByProductId(productId);
+        inventoryRepository.deleteByProductId(productId);
+        productImageRepository.deleteByProductId(productId);
+        productVariantRepository.deleteByProductId(productId);
+
+        // Sau cùng xoá product
+        productRepository.deleteById(productId);
     }
+
+
+    public Page<ProductListDTO> findAllWithFilters(
+            Long categoryId,
+            Integer colorId,
+            Integer sizeId,
+            BigDecimal minPrice,
+            BigDecimal maxPrice,
+            int page,
+            int size,
+            Sort sort
+    ) {
+        Pageable pageable = PageRequest.of(page, size); // ⚠️ Không dùng sort ở đây vì sort sẽ làm lỗi nếu sort theo "price"
+
+
+        Page<Product> products = productRepository.findAll((root, query, cb) -> {
+
+            if (query.getResultType() != Long.class && query.getResultType() != long.class) {
+                root.fetch("variants", JoinType.LEFT);
+            }
+
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (categoryId != null) {
+                predicates.add(cb.equal(root.get("category").get("id"), categoryId));
+            }
+
+            if (colorId != null || sizeId != null || minPrice != null || maxPrice != null) {
+                Join<Object, Object> variantJoin = root.join("variants", JoinType.INNER);
+
+                if (colorId != null) {
+                    predicates.add(cb.equal(variantJoin.get("color").get("id"), colorId));
+                }
+                if (sizeId != null) {
+                    predicates.add(cb.equal(variantJoin.get("size").get("id"), sizeId));
+                }
+                if (minPrice != null) {
+                    predicates.add(cb.greaterThanOrEqualTo(variantJoin.get("price"), minPrice));
+                }
+                if (maxPrice != null) {
+                    predicates.add(cb.lessThanOrEqualTo(variantJoin.get("price"), maxPrice));
+                }
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        }, Pageable.unpaged());
+
+        List<ProductListDTO> dtoList = products.getContent().stream()
+                .map(product -> {
+                    BigDecimal minVariantPrice = product.getVariants().stream()
+                            .map(ProductVariant::getPrice)
+                            .filter(Objects::nonNull)
+                            .min(Comparator.naturalOrder())
+                            .orElse(BigDecimal.ZERO);
+
+                    Map<Integer, Color> colorMap = product.getVariants().stream()
+                            .map(ProductVariant::getColor)
+                            .collect(Collectors.toMap(Color::getId, c -> c, (c1, c2) -> c1));
+
+                    List<ColorDTO> colorPreviews = colorMap.values().stream()
+                            .map(color -> {
+                                List<ProductVariant> colorVariants = product.getVariants().stream()
+                                        .filter(v -> v.getColor().getId().equals(color.getId()))
+                                        .toList();
+
+                                BigDecimal minPriceForColor = colorVariants.stream()
+                                        .map(ProductVariant::getPrice)
+                                        .filter(Objects::nonNull)
+                                        .min(Comparator.naturalOrder())
+                                        .orElse(BigDecimal.ZERO);
+
+                                List<SizeDTO> sizesForColor = colorVariants.stream()
+                                        .map(ProductVariant::getSize)
+                                        .filter(Objects::nonNull)
+                                        .collect(Collectors.collectingAndThen(
+                                                Collectors.toMap(Size::getId, s -> s, (s1, s2) -> s1),
+                                                m -> m.values().stream()
+                                                        .map(sz -> new SizeDTO(sz.getId(), sz.getLabel()))
+                                                        .toList()
+                                        ));
+
+                                String imagePreview = productImageRepository
+                                        .findByProductIdAndColorId(product.getId(), color.getId().longValue())
+                                        .stream()
+                                        .map(ProductImage::getImageUrl)
+                                        .findFirst()
+                                        .orElse(null);
+
+                                return new ColorDTO(
+                                        color.getId(),
+                                        color.getName(),
+                                        color.getHexCode(),
+                                        imagePreview,
+                                        minPriceForColor,
+                                        sizesForColor
+                                );
+                            })
+                            .toList();
+
+                    List<SizeDTO> sizes = product.getVariants().stream()
+                            .map(ProductVariant::getSize)
+                            .filter(Objects::nonNull)
+                            .collect(Collectors.collectingAndThen(
+                                    Collectors.toMap(Size::getId, sz -> sz, (s1, s2) -> s1),
+                                    m -> m.values().stream()
+                                            .map(sz -> new SizeDTO(sz.getId(), sz.getLabel()))
+                                            .toList()
+                            ));
+
+                    return new ProductListDTO(
+                            product.getId(),
+                            product.getName(),
+                            product.getImageUrl(),
+                            minVariantPrice,
+                            colorPreviews,
+                            sizes
+                    );
+                })
+                .toList();
+
+        if (sort.isSorted()) {
+            Sort.Order order = sort.iterator().next();
+            if ("dummy".equals(order.getProperty())) {
+                Comparator<ProductListDTO> comparator = Comparator.comparing(ProductListDTO::getPrice);
+                if (order.getDirection().isDescending()) {
+                    comparator = comparator.reversed();
+                }
+                dtoList = dtoList.stream().sorted(comparator).toList();
+            }
+        }
+
+        int start = page * size;
+        int end = Math.min(start + size, dtoList.size());
+        List<ProductListDTO> pagedList = dtoList.subList(Math.min(start, end), end);
+
+        return new PageImpl<>(pagedList, PageRequest.of(page, size, sort), dtoList.size());
+    }
+
+
 
     public ProductDetailDTO getProductDetail(Long id) {
         Product product = productRepository.findById(id).orElseThrow();
@@ -49,7 +208,6 @@ public class ProductService {
         List<ProductImage> images = productImageRepository.findByProductId(id);
         List<Review> reviews = reviewRepository.findByProductId(id);
 
-        // Gom nhóm theo ColorId → ColorDTO
         Map<Integer, ProductDetailDTO.ColorDTO> colorMap = new LinkedHashMap<>();
 
         for (ProductVariant variant : variants) {
@@ -68,7 +226,6 @@ public class ProductService {
                 return dto;
             });
 
-            // Thêm size với quantity
             ProductDetailDTO.SizeDTO sizeDTO = new ProductDetailDTO.SizeDTO();
             sizeDTO.setId(variant.getSize().getId());
             sizeDTO.setLabel(variant.getSize().getLabel());
@@ -76,7 +233,6 @@ public class ProductService {
             colorDTO.getSizes().add(sizeDTO);
         }
 
-        // Map reviews
         List<ProductDetailDTO.ReviewDTO> reviewDTOs = reviews.stream().map(review -> {
             ProductDetailDTO.ReviewDTO dto = new ProductDetailDTO.ReviewDTO();
             dto.setId(review.getId());
@@ -92,12 +248,18 @@ public class ProductService {
         int favoriteCount = favoriteRepository.countByProductId(id);
         Double rating = reviewRepository.avgRatingByProductId(id);
 
-        // Kết quả cuối
         ProductDetailDTO dto = new ProductDetailDTO();
         dto.setId(product.getId());
         dto.setName(product.getName());
         dto.setDescription(product.getDescription());
-        dto.setPrice(product.getPrice());
+        BigDecimal minPrice = variants.stream()
+                .map(ProductVariant::getPrice)
+                .filter(Objects::nonNull)
+                .min(Comparator.naturalOrder())
+                .orElse(BigDecimal.ZERO);
+
+        dto.setPrice(minPrice);
+
         dto.setColors(new ArrayList<>(colorMap.values()));
         dto.setFavorites(favoriteCount);
         dto.setRating(rating);
@@ -114,45 +276,47 @@ public class ProductService {
         return productRepository.countProductsLowStock();
     }
 
-    @Transactional
-    public void createProductWithVariants(ProductInputDTO dto) {
-        Product product = new Product();
-        product.setName(dto.getName());
-        product.setDescription(dto.getDescription());
-        product.setPrice(dto.getPrice());
-        product.setStatus(dto.getStatus());
-
-        Category category = categoryRepository.findById((long) dto.getCategoryId())
-                .orElseThrow(() -> new RuntimeException("Category not found"));
-        product.setCategory(category);
-
-        product = productRepository.save(product);
-
-        for (ProductInputDTO.ColorVariantDTO colorDTO : dto.getColors()) {
-            Color color = colorRepository.findById((long) colorDTO.getId())
-                    .orElseThrow(() -> new RuntimeException("Color not found"));
-
-            // Save ProductImage
-            ProductImage image = new ProductImage();
-            image.setProduct(product);
-            image.setColor(color);
-            image.setImageUrl(colorDTO.getImage());
-            productImageRepository.save(image);
-
-            for (String sizeLabel : colorDTO.getSizes()) {
-                Size size = (Size) sizeRepository.findByLabel(sizeLabel)
-                        .orElseThrow(() -> new RuntimeException("Size not found"));
-
-                ProductVariant variant = new ProductVariant();
-                variant.setProduct(product);
-                variant.setColor(color);
-                variant.setSize(size);
-                variant.setQuantity(100); // Default test
-                productVariantRepository.save(variant);
-            }
-        }
+    public List<String> getAllProducts() {
+        List<Product> products = productRepository.findAll();
+        return products.stream()
+                .map(Product::getName)
+                .collect(Collectors.toList());
     }
 
+    private ProductAdminDTO toAdminDTO(Product product) {
+        List<ProductVariant> variants = product.getVariants();
+        int totalQty = variants.stream().mapToInt(ProductVariant::getQuantity).sum();
+
+        BigDecimal minPrice = variants.stream()
+                .map(ProductVariant::getPrice)
+                .min(BigDecimal::compareTo)
+                .orElse(BigDecimal.ZERO);
+
+        BigDecimal maxPrice = variants.stream()
+                .map(ProductVariant::getPrice)
+                .max(BigDecimal::compareTo)
+                .orElse(BigDecimal.ZERO);
+
+        return new ProductAdminDTO(
+                product.getId(),
+                product.getName(),
+                product.getImageUrl(),
+                product.getCategory() != null ? product.getCategory().getName() : null,
+                product.getGender() == 1 ? "Nam" : product.getGender() == 2 ? "Nữ" : "Unisex",
+                product.getStatus(),
+                product.getCreatedAt(),
+                variants.size(),
+                totalQty,
+                minPrice,
+                maxPrice
+        );
+    }
+
+
+    public Page<ProductAdminDTO> searchAdminProducts(String keyword, String status, Long categoryId, Integer gender, Pageable pageable) {
+        return productRepository.searchAdminProducts(keyword, status, categoryId, gender, pageable)
+                .map(this::toAdminDTO);
+    }
 
 
 }

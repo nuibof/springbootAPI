@@ -2,6 +2,10 @@ package api.rest.SeasFit.repository;
 
 import api.rest.SeasFit.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+
+import java.awt.print.Pageable;
+import java.util.List;
 
 public interface UserRepository extends JpaRepository<User, Long> {
     User findByUserName(String userName);
@@ -10,5 +14,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByUserName(String userName);
     boolean existsByEmail(String email);
     boolean existsByPhone(String phone);
+
+    @Query("SELECT u FROM User u ORDER BY u.createdAt DESC")
+    List<User> findLatestUsers(Pageable pageable);
+
+    List<User> findTop5ByOrderByCreatedAtDesc();
+
+
+
 
 }

@@ -13,6 +13,7 @@ public class ProductFullRequest {
     private String status;
     private String imageUrl;
     private Integer categoryId;
+    private Integer gender;
     private List<ColorRequest> colors;
 
     @Data
@@ -20,6 +21,7 @@ public class ProductFullRequest {
         private String name;
         private String hex;
         private String image;
+        private BigDecimal price;
         private List<String> sizes;
     }
 }

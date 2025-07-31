@@ -4,7 +4,11 @@ import api.rest.SeasFit.entity.User;
 import api.rest.SeasFit.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+
+import java.awt.print.Pageable;
+import java.util.List;
 
 @Service
 @Transactional
@@ -34,7 +38,6 @@ public class UserService {
     }
 
     public void save(User user) {
-        // Bỏ kiểm tra phone/email nếu null (đăng nhập OAuth không có phone)
         if (!userRepo.existsByUserName(user.getUserName())) {
             userRepo.save(user);
         }
@@ -66,4 +69,9 @@ public class UserService {
         if (existsByPhone(user.getPhone())) return "Số điện thoại đã tồn tại!";
         return null;
     }
+
+    public List<User> getLatestUsers(int limit) {
+        return userRepo.findTop5ByOrderByCreatedAtDesc();
+    }
+
 }

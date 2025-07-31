@@ -18,7 +18,7 @@ import java.util.List;
 
 public class JwtAuthFilter extends OncePerRequestFilter {
 
-    private final String secretKey = "uXMY1I3EbxfDlRHTFMjwoR6rUQ13jET8cvnHbdZSiqM"; // Bảo mật token
+    private final String secretKey = "uXMY1I3EbxfDlRHTFMjwoR6rUQ13jET8cvnHbdZSiqM";
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -37,7 +37,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     }
 
     private String extractToken(HttpServletRequest request) {
-        // Ưu tiên lấy token từ cookie "jwtToken"
         if (request.getCookies() != null) {
             for (Cookie cookie : request.getCookies()) {
                 if ("jwtToken".equals(cookie.getName())) {
@@ -46,14 +45,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         }
 
-        // Nếu không có cookie, thử lấy từ Authorization header
         String bearer = request.getHeader("Authorization");
         return (bearer != null && bearer.startsWith("Bearer ")) ? bearer.substring(7) : null;
     }
 
     private boolean validateToken(String token) {
         try {
-            // Kiểm tra chữ ký và hạn sử dụng (nếu có)
             Jwts.parser().setSigningKey(secretKey).parseClaimsJws(token);
             return true;
         } catch (Exception e) {
@@ -73,9 +70,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private Authentication getAuthentication(String token) {
         String username = getUsernameFromToken(token);
-        String role = getRoleFromToken(token);  // Lấy vai trò từ token
+        String role = getRoleFromToken(token);
 
-        // Cập nhật quyền vào đối tượng Authentication
         return new UsernamePasswordAuthenticationToken(username, null, List.of(new SimpleGrantedAuthority(role)));
     }
 
@@ -86,6 +82,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 .parseClaimsJws(token)
                 .getBody();
 
-        return claims.getSubject(); // username thường được lưu ở đây
+        return claims.getSubject();
     }
 }

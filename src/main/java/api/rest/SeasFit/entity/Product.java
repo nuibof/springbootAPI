@@ -6,6 +6,8 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "product")
@@ -24,18 +26,21 @@ public class Product {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal price;
-
     @Column(length = 20)
     private String status = "ACTIVE";
 
     @Column(name = "image_url")
-    private String image; // tên trong Java khác với tên cột
+    private String imageUrl;
+
+    @Column(name = "gender", length = 10)
+    private Integer gender;
+
+    @OneToMany(mappedBy = "product", fetch = FetchType.LAZY)
+    private List<ProductVariant> variants = new ArrayList<>();
+
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_id") // khóa ngoại trỏ đến bảng category
-    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    @JoinColumn(name = "category_id")
     private Category category;
 
     @Column(name = "created_at")

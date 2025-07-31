@@ -29,4 +29,12 @@ public class SizeService {
     public void deleteById(Long id) {
         sizeRepository.deleteById(id);
     }
+
+    public Object getAllSizes() {
+        List<Size> sizes = sizeRepository.findAll();
+        if (sizes.isEmpty()) {
+            return "No sizes found";
+        }
+        return sizes;
+    }
 }

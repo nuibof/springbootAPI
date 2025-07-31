@@ -14,7 +14,6 @@ public class ProductDetailDTO {
     private BigDecimal price;
     private List<ColorDTO> colors;
     private int favorites;
-
     private Double rating;
     private List<ReviewDTO> reviews;
 
@@ -24,7 +23,7 @@ public class ProductDetailDTO {
         private String name;
         private String hex;
         private String image;
-        private List<SizeDTO> sizes; // ❗ sửa từ List<String> → List<SizeDTO>
+        private List<SizeDTO> sizes;
     }
 
     @Data

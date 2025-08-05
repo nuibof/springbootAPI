@@ -138,6 +138,21 @@ public class DataController {
         return ResponseEntity.ok("Product created successfully");
     }
 
+    @PutMapping("/products/active/{id}")
+    public ResponseEntity<?> toggleProductActive(@PathVariable Long id) {
+        try {
+            Product product = productRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Product not found"));
+
+            product.setStatus(product.getStatus().equals("active") ? "inactive" : "active");
+            productRepository.save(product);
+
+            return ResponseEntity.ok("Product status updated successfully");
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error updating product status");
+        }
+    }
     @GetMapping("/banner")
     public ResponseEntity<Banner> getBanner() {
         try {

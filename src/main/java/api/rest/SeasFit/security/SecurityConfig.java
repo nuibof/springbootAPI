@@ -22,12 +22,14 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.firewall.StrictHttpFirewall;
 import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 import org.springframework.web.reactive.config.CorsRegistry;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 @Configuration
@@ -52,6 +54,24 @@ public class SecurityConfig {
     public JwtAuthFilter jwtAuthFilter() {
         return new JwtAuthFilter();
     }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOrigins(List.of(
+                "http://localhost:5173",
+                "http://118.71.23.211:5173",
+                "http://192.168.100.239:5173"
+        ));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
+    }
+
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -95,7 +115,7 @@ public class SecurityConfig {
 
                             Cookie cookie = new Cookie("jwtToken", token);
                             cookie.setHttpOnly(true);
-                            cookie.setSecure(false);
+                            cookie.setSecure(true);
                             cookie.setPath("/");
                             cookie.setMaxAge(18000);
                             response.addCookie(cookie);
@@ -146,14 +166,18 @@ public class SecurityConfig {
         source.registerCorsConfiguration("/**", config);
         return new CorsFilter(source);
     }
+//    @Override
+//    public void addCorsMappings(CorsRegistry registry) {
+//        registry.addMapping("/api/**")
+//                .allowedOrigins(
+//                        "http://localhost:5173",
+//                        "http://118.71.23.211:5173",
+//                        "http://192.168.100.239:5173",
+//                        "https://reject-abu-spaces-restrict.trycloudflare.com" // 👈 thêm tunnel
+//                )
+//                .allowedMethods("*")
+//                .allowCredentials(true);
+//    }
 
-    public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/**")
-                .allowedOrigins("http://localhost:5173")
-                .allowedOrigins("http://118.71.23.211:5173")
-                .allowedOrigins("http://192.168.100.239:5173")
-                .allowedMethods("*")
-                .allowCredentials(true);
-    }
 
 }

@@ -10,7 +10,6 @@ import api.rest.SeasFit.repository.CartItemRepository;
 import api.rest.SeasFit.repository.ProductVariantRepository;
 import api.rest.SeasFit.security.JwtUtil;
 import api.rest.SeasFit.service.CartService;
-import api.rest.SeasFit.service.ProductVariantService;
 import api.rest.SeasFit.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -41,7 +40,18 @@ public class CartController {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(msg);
     }
 
-    private User getAuthenticatedUser(String token) {
+    private User getAuthenticatedUser(
+            @CookieValue(value = "jwtToken", required = false) String cookieToken,
+            @RequestHeader(value = "Authorization", required = false) String authHeader
+    ) {
+        String token = null;
+
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7);
+        } else if (cookieToken != null) {
+            token = cookieToken;
+        }
+
         if (token == null || token.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Thiếu token xác thực");
         }
@@ -60,10 +70,14 @@ public class CartController {
     }
 
 
+
     @GetMapping("/count")
-    public ResponseEntity<?> getCartItemCount(@CookieValue(value = "jwtToken", required = false) String token) {
+    public ResponseEntity<?> getCartItemCount(
+            @CookieValue(value = "jwtToken", required = false) String cookieToken,
+            @RequestHeader(value = "Authorization", required = false) String authHeader
+    ) {
         try {
-            User user = getAuthenticatedUser(token);
+            User user = getAuthenticatedUser(cookieToken, authHeader);
             int itemCount = cartService.getCartItemCount(user.getId());
             return ResponseEntity.ok(itemCount);
         } catch (RuntimeException e) {
@@ -71,9 +85,11 @@ public class CartController {
         }
     }
 
+
     @PostMapping("/add")
     public ResponseEntity<?> addToCart(
             @CookieValue(value = "jwtToken", required = false) String token,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestBody AddToCartDTO dto
     ) {
         Optional<ProductVariant> variantOpt = productVariantRepository
@@ -90,7 +106,7 @@ public class CartController {
         }
 
         try {
-            User user = getAuthenticatedUser(token);
+            User user = getAuthenticatedUser(token, authHeader);
 
             Optional<CartItem> existingItemOpt = cartItemRepository
                     .findByCart_User_IdAndVariant_Id(user.getId(), variant.getId());
@@ -113,9 +129,10 @@ public class CartController {
 
     @DeleteMapping("/item/{id}")
     public ResponseEntity<?> removeItem(@PathVariable Long id,
-                                        @CookieValue(value = "jwtToken", required = false) String token) {
+                                        @CookieValue(value = "jwtToken", required = false) String token,
+                                        @RequestHeader(value = "Authorization", required = false) String authHeader) {
         try {
-            User user = getAuthenticatedUser(token);
+            User user = getAuthenticatedUser(token, authHeader);
             return cartService.removeItem(user.getId(), id);
         } catch (RuntimeException e) {
             return unauthorized(e.getMessage());
@@ -128,10 +145,11 @@ public class CartController {
             @RequestParam(required = false) Long colorId,
             @RequestParam(required = false) Long sizeId,
             @RequestParam(required = false) Integer quantity,
-            @CookieValue(value = "jwtToken", required = false) String token
+            @CookieValue(value = "jwtToken", required = false) String token,
+            @RequestHeader(value = "Authorization", required = false) String authHeader
     ) {
         try {
-            User user = getAuthenticatedUser(token);
+            User user = getAuthenticatedUser(token, authHeader);
 
             if (quantity != null) {
                 ProductVariant variant = cartService.getProductVariantByItemId(id);
@@ -154,9 +172,10 @@ public class CartController {
     }
 
     @GetMapping
-    public ResponseEntity<?> getCart(@CookieValue(value = "jwtToken", required = false) String token) {
+    public ResponseEntity<?> getCart(@CookieValue(value = "jwtToken", required = false) String token,
+                                     @RequestHeader(value = "Authorization", required = false) String authHeader) {
         try {
-            User user = getAuthenticatedUser(token);
+            User user = getAuthenticatedUser(token, authHeader);
             List<CartItemDTO> items = cartService.getCartItems(user.getId());
             return ResponseEntity.ok(items);
         } catch (RuntimeException e) {

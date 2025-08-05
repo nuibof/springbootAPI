@@ -13,6 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import api.rest.SeasFit.entity.User;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -54,10 +55,10 @@ public class AuthController {
 
         ResponseCookie jwtCookie = ResponseCookie.from("jwtToken", token)
                 .httpOnly(true)
-                .secure(false)
+                .secure(true)
+                .sameSite("None")
                 .path("/")
-                .maxAge(18000)
-                .sameSite("Lax")
+                .maxAge(Duration.ofDays(1))
                 .build();
         response.setHeader(HttpHeaders.SET_COOKIE, jwtCookie.toString());
 
@@ -69,10 +70,10 @@ public class AuthController {
 
         ResponseCookie clearJwt = ResponseCookie.from("jwtToken", "")
                 .httpOnly(true)
-                .secure(false)
+                .secure(true)
+                .sameSite("None")
                 .path("/")
-                .maxAge(0)
-                .sameSite("Lax")
+                .maxAge(Duration.ofDays(1))
                 .build();
         response.setHeader(HttpHeaders.SET_COOKIE, clearJwt.toString());
 
@@ -100,7 +101,19 @@ public class AuthController {
     }
 
     @GetMapping("/user-info")
-    public ResponseEntity<?> getUserInfo(@CookieValue(value = "jwtToken", required = false) String token) {
+    public ResponseEntity<?> getUserInfo(
+            @CookieValue(value = "jwtToken", required = false) String cookieToken,
+            @RequestHeader(value = "Authorization", required = false) String authHeader
+    ) {
+        String token = null;
+
+        // Ưu tiên header nếu có
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7);
+        } else if (cookieToken != null) {
+            token = cookieToken;
+        }
+
         if (token == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("error", "Không phát hiện token"));
@@ -123,4 +136,5 @@ public class AuthController {
 
         return ResponseEntity.ok(data);
     }
+
 }

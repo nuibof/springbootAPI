@@ -22,7 +22,18 @@ public class UserController {
     }
 
     @GetMapping("/info")
-    public ResponseEntity<?> getUserInfo(@CookieValue(value = "jwtToken", required = false) String token) {
+    public ResponseEntity<?> getUserInfo(
+            @CookieValue(value = "jwtToken", required = false) String cookieToken,
+            @RequestHeader(value = "Authorization", required = false) String authHeader
+    ) {
+        String token = null;
+
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7); // Lấy token từ header
+        } else if (cookieToken != null) {
+            token = cookieToken; // Fallback nếu frontend dùng cookie
+        }
+
         if (token == null || token.isEmpty()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Không có token xác thực.");
         }
@@ -37,20 +48,30 @@ public class UserController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Người dùng không tồn tại.");
         }
 
-        if(user.getPassword().equals("Google"))
-        {
+        if ("Google".equals(user.getPassword())) {
             user.setPassword("!@#$Google!@#$");
         } else {
             user.setPassword(null);
         }
+
         return ResponseEntity.ok(user);
     }
 
+
     @PostMapping("/update")
     public ResponseEntity<?> updateUserInfo(
-            @CookieValue(value = "jwtToken", required = false) String token,
+            @CookieValue(value = "jwtToken", required = false) String cookieToken,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestBody User updatedUser
     ) {
+        String token = null;
+
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7);
+        } else if (cookieToken != null) {
+            token = cookieToken;
+        }
+
         if (token == null || token.isEmpty()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Không có token xác thực.");
         }
@@ -82,5 +103,6 @@ public class UserController {
 
         return ResponseEntity.ok(existingUser);
     }
+
 
 }

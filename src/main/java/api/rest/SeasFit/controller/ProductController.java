@@ -49,10 +49,11 @@ public class ProductController {
         Sort sortObject = Sort.unsorted();
 
         if ("price,asc".equalsIgnoreCase(sort)) {
-            sortObject = Sort.by(Sort.Order.asc("dummy"));
+            sortObject = Sort.by(Sort.Order.asc("price"));
         } else if ("price,desc".equalsIgnoreCase(sort)) {
-            sortObject = Sort.by(Sort.Order.desc("dummy"));
+            sortObject = Sort.by(Sort.Order.desc("price"));
         }
+
 
 
         return productService.findAllWithFilters(

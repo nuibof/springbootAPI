@@ -9,14 +9,16 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "orderitem")
+@Table(name = "order_item")
 public class OrderItem {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     private Long orderId;
-    private Long productId;
+    private Long variantId;   // ✅ đúng theo bảng DB
+
     private Integer quantity;
     private BigDecimal price;
 }

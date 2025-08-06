@@ -97,7 +97,6 @@ public class UserController {
         existingUser.setDateOfBirth(updatedUser.getDateOfBirth());
         existingUser.setEmail(updatedUser.getEmail());
         existingUser.setPhone(updatedUser.getPhone());
-        existingUser.setAddress(updatedUser.getAddress());
 
         userService.save(existingUser);
 

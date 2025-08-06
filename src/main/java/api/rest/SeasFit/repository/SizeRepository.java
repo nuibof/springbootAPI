@@ -9,4 +9,5 @@ public interface SizeRepository extends JpaRepository<Size, Long> {
     Optional<Size> findByLabel(String label);
 
     boolean existsByLabel(String label);
+
 }

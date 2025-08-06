@@ -1,9 +1,9 @@
 package api.rest.SeasFit.controller;
 
+import api.rest.SeasFit.entity.Size;
 import api.rest.SeasFit.service.SizeService;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/sizes")
@@ -16,4 +16,25 @@ public class SizeController {
     public Object getAllSizes() {
         return sizeService.getAllSizes();
     }
+
+    @PostMapping("/add")
+    public ResponseEntity<?> addSize(@RequestBody Size size) {
+        if (size.getLabel() == null || size.getLabel().isEmpty()) {
+            return ResponseEntity.badRequest().body("Tên size không được để trống");
+        }
+        if (sizeService.existsByLabel(size.getLabel())) {
+            return ResponseEntity.badRequest().body("Size đã tồn tại");
+        }
+        return ResponseEntity.ok(sizeService.save(size));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteSize(@PathVariable Long id) {
+        if (!sizeService.findById(id).isPresent()) {
+            return ResponseEntity.notFound().build();
+        }
+        sizeService.deleteById(id);
+        return ResponseEntity.ok("Size đã được xóa thành công");
+    }
+
 }

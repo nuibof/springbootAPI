@@ -4,6 +4,7 @@ import api.rest.SeasFit.dto.AddToCartDTO;
 import api.rest.SeasFit.dto.CartItemDTO;
 import api.rest.SeasFit.entity.*;
 import api.rest.SeasFit.repository.*;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,6 +31,15 @@ public class CartService {
                 .orElseThrow(() -> new RuntimeException("Item not found"));
         return item.getVariant();
     }
+
+    @Transactional
+    public void deleteItems(List<Long> ids, Long userId) {
+        cartItemRepository.deleteByIdInAndCartUserId(ids, userId);
+    }
+
+
+
+
 
     public ResponseEntity<?> addToCart(Long userId, AddToCartDTO req) {
         try {

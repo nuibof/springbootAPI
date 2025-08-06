@@ -37,4 +37,9 @@ public class SizeService {
         }
         return sizes;
     }
+
+
+    public boolean existsByLabel(String label) {
+        return sizeRepository.existsByLabel(label);
+    }
 }

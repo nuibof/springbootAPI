@@ -26,8 +26,8 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/data")
 public class DataController {
     private final ProductService productService;
+    @Autowired
     private final UserService userService;
-
     @Autowired
     private CategoryRepository categoryRepository;
     @Autowired
@@ -144,14 +144,18 @@ public class DataController {
             Product product = productRepository.findById(id)
                     .orElseThrow(() -> new RuntimeException("Product not found"));
 
-            product.setStatus(product.getStatus().equals("active") ? "inactive" : "active");
+            System.out.println("Current status: " + product.getStatus());
+
+            product.setStatus("ACTIVE".equalsIgnoreCase(product.getStatus()) ? "INACTIVE" : "ACTIVE");
+
             productRepository.save(product);
 
-            return ResponseEntity.ok("Product status updated successfully");
+            return ResponseEntity.ok(product.getStatus()); // Trả luôn trạng thái mới
         } catch (Exception e) {
-            e.printStackTrace();
+            e.printStackTrace(); // để log ra lỗi cụ thể trong console
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error updating product status");
         }
+
     }
     @GetMapping("/banner")
     public ResponseEntity<Banner> getBanner() {
@@ -159,7 +163,6 @@ public class DataController {
             Banner banner = bannerService.getBanner();
             return ResponseEntity.ok(banner);
         } catch (Exception e) {
-            e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
         }
     }
@@ -179,7 +182,6 @@ public class DataController {
 
             return ResponseEntity.ok("Banner updated successfully");
         } catch (Exception e) {
-            e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error updating banner");
         }
     }
@@ -195,7 +197,7 @@ public class DataController {
         dto.setImageUrl(product.getImageUrl());
         dto.setStatus(product.getStatus());
         dto.setGender(product.getGender());
-        dto.setCategoryId(product.getCategory().getId().intValue());
+        dto.setCategoryId(product.getCategory().getId());
 
         List<ProductFullRequest.ColorRequest> colors = product.getVariants().stream()
                 .collect(Collectors.groupingBy(variant -> variant.getColor().getId()))

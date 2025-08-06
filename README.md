@@ -11,6 +11,7 @@ This is a Spring Boot based API project for handling cart management, user authe
 - Product and product variant management.
 - File upload support for product images.
 - SQL Server integration.
+- MoMo payment integration with signature generation and test environment simulation.
 
 ## Technologies Used
 
@@ -29,11 +30,3 @@ This is a Spring Boot based API project for handling cart management, user authe
 1. **JDK 17+**: Ensure you have JDK 17 or above installed.
 2. **Maven**: Use Maven to manage dependencies.
 3. **SQL Server**: Ensure SQL Server is running and accessible.
-
-### Steps to Run Locally
-
-1. **Clone the repository**:
-
-   ```bash
-   git clone https://github.com/nuibof/springbootAPI.git
-   cd springbootAPI

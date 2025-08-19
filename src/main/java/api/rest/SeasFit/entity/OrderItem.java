@@ -16,8 +16,15 @@ public class OrderItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private Long orderId;
-    private Long variantId;   // ✅ đúng theo bảng DB
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "variant_id")
+    @org.hibernate.annotations.NotFound(action = org.hibernate.annotations.NotFoundAction.IGNORE)
+    private ProductVariant productVariant;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id", nullable = false)
+    private Order order;
+
 
     private Integer quantity;
     private BigDecimal price;

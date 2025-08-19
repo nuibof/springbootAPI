@@ -23,7 +23,8 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedOrigins(
                         "http://localhost:5173",
                         "http://118.71.23.211:5173",
-                        "http://192.168.100.239:5173"
+                        "http://192.168.100.239:5173",
+                        "http://192.168.1.11:5173"
                 )
                 .allowedMethods("*")
                 .allowCredentials(true);

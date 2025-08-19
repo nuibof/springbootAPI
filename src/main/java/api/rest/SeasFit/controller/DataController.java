@@ -1,13 +1,11 @@
 package api.rest.SeasFit.controller;
 
 import api.rest.SeasFit.dto.ProductFullRequest;
-import api.rest.SeasFit.dto.ProductInputDTO;
 import api.rest.SeasFit.dto.QuantityDTO;
 import api.rest.SeasFit.dto.VariantOnlyDTO;
 import api.rest.SeasFit.entity.*;
 import api.rest.SeasFit.repository.*;
 import api.rest.SeasFit.service.BannerService;
-import api.rest.SeasFit.service.CategoryService;
 import api.rest.SeasFit.service.ProductService;
 import api.rest.SeasFit.service.UserService;
 import jakarta.transaction.Transactional;
@@ -18,8 +16,7 @@ import org.springframework.web.bind.annotation.*;
 
 
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
@@ -44,6 +41,8 @@ public class DataController {
     private BannerRepository bannerRepository;
     @Autowired
     private BannerService bannerService;
+    @Autowired
+    private OrderItemRepository orderItemRepository;
 
 
     public DataController(ProductService productService, UserService userService) {
@@ -231,7 +230,7 @@ public class DataController {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Product not found"));
 
-        // Update main fields
+        // ===== 1) Update main fields =====
         product.setName(request.getName());
         product.setDescription(request.getDescription());
         product.setImageUrl(request.getImageUrl());
@@ -241,47 +240,89 @@ public class DataController {
         Category category = categoryRepository.findById(Long.valueOf(request.getCategoryId()))
                 .orElseThrow(() -> new RuntimeException("Category not found"));
         product.setCategory(category);
-
         productRepository.save(product);
 
-        // Delete old variants and images
-        productVariantRepository.deleteAllByProduct(product);
-        productImageRepository.deleteAllByProduct(product);
+        // ===== 2) Load hiện trạng DB =====
+        List<ProductVariant> existingVariants = productVariantRepository.findByProductId(product.getId());
+        Map<String, ProductVariant> existingVariantKeyMap = new HashMap<>();
+        for (ProductVariant v : existingVariants) {
+            String key = v.getColor().getId() + "_" + v.getSize().getId();
+            existingVariantKeyMap.put(key, v);
+        }
 
+        List<ProductImage> existingImages = productImageRepository.findByProductId(product.getId());
+        // ảnh map theo colorId (mỗi màu 1 ảnh – theo payload)
+        Map<Long, ProductImage> imageByColor = new HashMap<>();
+        for (ProductImage img : existingImages) {
+            if (img.getColor() != null) {
+                imageByColor.put(Long.valueOf(img.getColor().getId()), img);
+            }
+        }
+
+        // ===== 3) Build set các key variant từ request =====
+        Set<String> incomingKeys = new HashSet<>();
+
+        // ===== 4) Duyệt colors trong request: upsert ảnh + upsert variants =====
         for (ProductFullRequest.ColorRequest colorReq : request.getColors()) {
+            // upsert Color
             Color color = colorRepository.findByNameAndHexCode(colorReq.getName(), colorReq.getHex())
                     .orElseGet(() -> colorRepository.save(new Color(colorReq.getName(), colorReq.getHex())));
 
-            // Save image per color
-            ProductImage image = new ProductImage();
-            image.setProduct(product);
-            image.setColor(color);
-            image.setImageUrl(colorReq.getImage());
-            image.setCreatedAt(LocalDateTime.now());
-            productImageRepository.save(image);
+            // upsert Image theo color
+            ProductImage img = imageByColor.get(color.getId());
+            if (img == null) {
+                img = new ProductImage();
+                img.setProduct(product);
+                img.setColor(color);
+            }
+            img.setImageUrl(colorReq.getImage());
+            img.setCreatedAt(java.time.LocalDateTime.now());
+            productImageRepository.save(img);
 
+            // upsert variants theo sizes
             for (String sizeStr : colorReq.getSizes()) {
                 Size size = sizeRepository.findByLabel(sizeStr)
                         .orElseGet(() -> sizeRepository.save(new Size(sizeStr)));
 
-                // Avoid inserting duplicate variant
-                boolean exists = productVariantRepository.existsByProductIdAndColorIdAndSizeId(product.getId(), color.getId(), size.getId());
-                if (!exists) {
-                    ProductVariant variant = new ProductVariant();
+                String key = color.getId() + "_" + size.getId();
+                incomingKeys.add(key);
+
+                ProductVariant variant = existingVariantKeyMap.get(key);
+                if (variant == null) {
+                    // CREATE
+                    variant = new ProductVariant();
                     variant.setProduct(product);
                     variant.setColor(color);
                     variant.setSize(size);
                     variant.setQuantity(0);
-                    variant.setPrice(colorReq.getPrice());
-                    variant.setCreatedAt(LocalDateTime.now());
-                    productVariantRepository.save(variant);
+                }
+                // UPDATE chung
+                variant.setPrice(colorReq.getPrice());
+                variant.setActive(true); // mở bán
+                productVariantRepository.save(variant);
+            }
+        }
+
+        // ===== 5) Xử lý variants cũ KHÔNG còn trong request =====
+        for (ProductVariant old : existingVariants) {
+            String key = old.getColor().getId() + "_" + old.getSize().getId();
+            if (!incomingKeys.contains(key)) {
+                boolean referenced = orderItemRepository.existsByProductVariant_Id(old.getId());
+                if (referenced) {
+                    // đã từng xuất hiện trong order_item -> không xóa, chỉ disable
+                    if (old.isActive()) {
+                        old.setActive(false);
+                        productVariantRepository.save(old);
+                    }
+                } else {
+                    // chưa dùng -> có thể xóa (hoặc soft-delete tùy ông)
+                    productVariantRepository.delete(old);
                 }
             }
         }
 
         return ResponseEntity.ok("Product updated successfully");
     }
-
 
 
 }

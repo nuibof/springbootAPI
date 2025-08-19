@@ -74,23 +74,29 @@ public class CartController {
             @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestBody AddToCartDTO dto
     ) {
-        System.out.println("AddToCartDTO: " + dto);
 
-        Optional<ProductVariant> variantOpt = productVariantRepository
-                .findByProductIdAndColorIdAndSizeId(dto.getProductId(), dto.getColorId(), dto.getSizeId());
 
-        if (variantOpt.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Không tìm thấy biến thể sản phẩm"));
-        }
-
-        ProductVariant variant = variantOpt.get();
-
-        if (variant.getQuantity() < dto.getQuantity()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Số lượng tồn kho không đủ"));
-        }
 
         try {
+            System.out.println(authHeader);
+            if(authHeader.equals("Bearer null")) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Chưa đăng nhập!"));
+            }
             User user = getAuthenticatedUser(authHeader);
+            System.out.println("AddToCartDTO: " + dto);
+
+            Optional<ProductVariant> variantOpt = productVariantRepository
+                    .findByProductIdAndColorIdAndSizeId(dto.getProductId(), dto.getColorId(), dto.getSizeId());
+
+            if (variantOpt.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Không tìm thấy biến thể sản phẩm"));
+            }
+
+            ProductVariant variant = variantOpt.get();
+
+            if (variant.getQuantity() < dto.getQuantity()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Số lượng tồn kho không đủ"));
+            }
 
             Optional<CartItem> existingItemOpt = cartItemRepository
                     .findByCart_User_IdAndVariant_Id(user.getId(), variant.getId());

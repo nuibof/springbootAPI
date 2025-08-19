@@ -14,6 +14,7 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Product {
 
     @Id
@@ -35,7 +36,13 @@ public class Product {
     @Column(name = "gender", length = 10)
     private Integer gender;
 
-    @OneToMany(mappedBy = "product", fetch = FetchType.LAZY)
+
+    @OneToMany(
+            mappedBy = "product",
+            fetch = FetchType.LAZY,
+            cascade = { CascadeType.PERSIST, CascadeType.MERGE }, // KHÔNG dùng REMOVE
+            orphanRemoval = false                                   // tắt orphan removal
+    )
     private List<ProductVariant> variants = new ArrayList<>();
 
 

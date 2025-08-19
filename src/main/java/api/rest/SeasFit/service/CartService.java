@@ -59,10 +59,10 @@ public class CartService {
                     .orElseThrow(() -> new RuntimeException("Size not found"));
 
             ProductVariant variant = productVariantRepository
-                    .findByProduct_IdAndColor_IdAndSize_Id(
+                    .findByProductIdAndColorIdAndSizeId(
                             req.getProductId(),
-                            Math.toIntExact(req.getColorId()),
-                            Math.toIntExact(req.getSizeId())
+                            (long) Math.toIntExact(req.getColorId()),
+                            (long) Math.toIntExact(req.getSizeId())
                     )
                     .orElseThrow(() -> new RuntimeException("Variant not found"));
 

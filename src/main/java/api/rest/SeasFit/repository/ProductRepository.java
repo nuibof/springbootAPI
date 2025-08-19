@@ -4,7 +4,9 @@ import api.rest.SeasFit.entity.Product;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -29,9 +31,16 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
         FROM product
         WHERE gender = ?
     """, nativeQuery = true)
-    List<Product> findByGender(String gender);
+    List<Product> findByGender(int gender);
 
     Page<Product> findAll(Specification<Product> spec, Pageable pageable);
+
+    @Modifying
+    @Query(value = "UPDATE product SET status = 'DELETE' WHERE id = :id", nativeQuery = true)
+    int softDeleteById(@Param("id") Long id);
+
+    @EntityGraph(attributePaths = {"variants","variants.color","variants.size"})
+    Page<Product> findAllByStatus(String status, Specification<Product> spec, Pageable pageable);
 
     @Query("SELECT DISTINCT p FROM Product p " +
             "JOIN p.variants v " +
@@ -65,4 +74,12 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
             Pageable pageable
     );
 
+    @Query("""
+    select p from Product p
+    where lower(p.name) like lower(concat('%', :q, '%'))
+    order by p.createdAt desc, p.id desc
+""")
+    List<Product> searchTop(@Param("q") String q, Pageable pageable);
+
+    Page<Product> findByNameContainingIgnoreCase(String q, Pageable pageable);
 }

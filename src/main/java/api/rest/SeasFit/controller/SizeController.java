@@ -37,4 +37,19 @@ public class SizeController {
         return ResponseEntity.ok("Size đã được xóa thành công");
     }
 
+    @PutMapping("/{id}")
+    public ResponseEntity<?> updateSize(@PathVariable Long id, @RequestBody Size size) {
+        if (sizeService.findById(id).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        if (size.getLabel() == null || size.getLabel().isEmpty()) {
+            return ResponseEntity.badRequest().body("Tên size không được để trống");
+        }
+        Size sz = new Size();
+        sz.setId(id.intValue());
+        sz.setLabel(size.getLabel());
+        System.out.println(sz);
+        return ResponseEntity.ok(sizeService.save(sz));
+    }
+
 }

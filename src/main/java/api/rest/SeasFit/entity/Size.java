@@ -1,6 +1,7 @@
 package api.rest.SeasFit.entity;
 
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -9,6 +10,7 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(name = "size")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Size {
 
     @Id

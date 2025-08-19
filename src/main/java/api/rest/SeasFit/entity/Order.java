@@ -5,7 +5,10 @@ import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "[order]") // Sửa lại nếu bảng thực tế tên là "orders"
@@ -36,11 +39,18 @@ public class Order {
     @Column(nullable = false, length = 20)
     private String status;
 
-    // ID giao dịch thanh toán (ví dụ Momo)
-    private String paymentTransactionId;
+    @Column(name = "discount_amount", precision = 18, scale = 2)
+    private BigDecimal discountAmount = BigDecimal.ZERO;
 
-    // Mã voucher nếu có
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "voucher_code", referencedColumnName = "code", insertable = false, updatable = false)
+    private Voucher voucher;
+
+    @Column(name = "voucher_code")
     private String voucherCode;
+
+    @Column(name = "cancel_reason", length = 32)
+    private String cancelReason;
 
     // Phí vận chuyển
     private Integer shippingFee;
@@ -56,4 +66,7 @@ public class Order {
     // Ngày cập nhật trạng thái
     @UpdateTimestamp
     private LocalDateTime updatedAt;
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
+    private List<OrderItem> items = new ArrayList<>();
+
 }

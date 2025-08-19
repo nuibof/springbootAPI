@@ -1,5 +1,6 @@
 package api.rest.SeasFit.controller;
 
+import api.rest.SeasFit.dto.UserInfoDTO;
 import api.rest.SeasFit.service.UserService;
 import org.springframework.web.bind.annotation.*;
 import api.rest.SeasFit.security.JwtUtil;
@@ -29,9 +30,9 @@ public class UserController {
         String token = null;
 
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            token = authHeader.substring(7); // Lấy token từ header
+            token = authHeader.substring(7);
         } else if (cookieToken != null) {
-            token = cookieToken; // Fallback nếu frontend dùng cookie
+            token = cookieToken;
         }
 
         if (token == null || token.isEmpty()) {
@@ -48,17 +49,27 @@ public class UserController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Người dùng không tồn tại.");
         }
 
-        if ("Google".equals(user.getPassword())) {
-            user.setPassword("!@#$Google!@#$");
-        } else {
-            user.setPassword(null);
-        }
+        // Map sang DTO (không bao giờ trả password)
+        UserInfoDTO dto = new UserInfoDTO(
+                user.getId(),
+                user.getUserName(),
+                user.getFullName(),
+                user.getEmail(),
+                user.getPhone(),
+                user.getIdentityCard(),
+                user.getImageUrl(),
+                user.getGender(),
+                user.getRole(),
+                user.getDateOfBirth() != null ? user.getDateOfBirth().toString() : null,
+                user.getCreatedAt() != null ? user.getCreatedAt().toString() : null
+        );
 
-        return ResponseEntity.ok(user);
+        return ResponseEntity.ok(dto);
     }
 
 
-    @PostMapping("/update")
+
+    @PutMapping("/update")
     public ResponseEntity<?> updateUserInfo(
             @CookieValue(value = "jwtToken", required = false) String cookieToken,
             @RequestHeader(value = "Authorization", required = false) String authHeader,

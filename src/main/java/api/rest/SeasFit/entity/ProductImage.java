@@ -1,5 +1,6 @@
 package api.rest.SeasFit.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
@@ -9,6 +10,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(name = "product_image")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class ProductImage {
 
     @Id

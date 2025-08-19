@@ -1,5 +1,6 @@
 package api.rest.SeasFit.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
@@ -10,6 +11,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Table(name = "color")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Color {
 
     @Id

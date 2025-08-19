@@ -9,7 +9,10 @@ import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
 import java.math.BigDecimal;
 import java.util.*;
 
@@ -27,10 +30,8 @@ public class ProductService {
     private final UserRepository userRepository;
     private final CartItemRepository cartItemRepository;
     private final InventoryRepository inventoryRepository;
-
-
-
-
+    private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
 
     public List<Product> findAll() {
         return productRepository.findAll();
@@ -40,9 +41,38 @@ public class ProductService {
         return productRepository.findById(id);
     }
 
-    public List<Product> findByGender(String gender) {
-        return productRepository.findByGender(gender);
+    public List<ProductCardDTO> findByGender(String gender) {
+        Integer code = toGenderCode(gender); // 1=male, 2=female...
+        var products = productRepository.findByGender(code);
+        return products.stream()
+                .map(p -> new ProductCardDTO(p.getId(), p.getName(), p.getImageUrl()))
+                .toList();
     }
+
+    private int toGenderCode(String g) {
+        if (g == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "gender null k hợp lệ");
+        }
+        switch (g.trim().toLowerCase()) {
+            case "male":
+            case "m":
+            case "nam":
+                return 1;
+            case "female":
+            case "f":
+            case "nu":
+            case "n":
+                return 2;
+            case "unisex":
+            case "uni":
+            case "all":
+                return 0;
+            default:
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "gender phải là male|female|unisex");
+        }
+    }
+
+
     @Transactional
     public Product save(Product entity) {
         return productRepository.save(entity);
@@ -50,17 +80,27 @@ public class ProductService {
 
     @Transactional
     public void deleteById(Long productId) {
-        // Xoá dữ liệu liên quan trước
+        // 1) Xoá các bảng không ràng buộc lịch sử
         reviewRepository.deleteByProductId(productId);
         favoriteRepository.deleteByProductId(productId);
         cartItemRepository.deleteByProductId(productId);
         inventoryRepository.deleteByProductId(productId);
-        productImageRepository.deleteByProductId(productId);
-        productVariantRepository.deleteByProductId(productId);
+        productImageRepository.deleteByProductId(productId); // nếu ảnh có FK mềm thì chuyển sang soft-delete
 
-        // Sau cùng xoá product
-        productRepository.deleteById(productId);
+        // 2) Kiểm tra có đơn hàng tham chiếu variant không
+        boolean hasOrders = orderItemRepository.existsByProductVariant_Product_Id(productId);
+
+        if (hasOrders) {
+            // 2a) Không được xoá cứng → soft-delete variants + product
+            productVariantRepository.softDeleteByProductId(productId); // update deleted=1, active=0
+            productRepository.softDeleteById(productId);               // update deleted=1, active=0
+        } else {
+            // 2b) Không có đơn nào → cho phép xoá cứng
+            productVariantRepository.deleteByProductId(productId);
+            productRepository.deleteById(productId);
+        }
     }
+
 
 
     public Page<ProductListDTO> findAllWithFilters(
@@ -73,8 +113,6 @@ public class ProductService {
             int size,
             Sort sort
     ) {
-        Pageable pageable = PageRequest.of(page, size); // ⚠️ Không dùng sort ở đây vì sort sẽ làm lỗi nếu sort theo "price"
-
 
         Page<Product> products = productRepository.findAll((root, query, cb) -> {
 
@@ -83,6 +121,9 @@ public class ProductService {
             }
 
             List<Predicate> predicates = new ArrayList<>();
+
+            // Chỉ l ấy sản phẩm đang hoạt động
+            predicates.add(cb.equal(root.get("status"), "ACTIVE"));
 
             if (categoryId != null) {
                 predicates.add(cb.equal(root.get("category").get("id"), categoryId));
@@ -317,6 +358,47 @@ public class ProductService {
         return productRepository.searchAdminProducts(keyword, status, categoryId, gender, pageable)
                 .map(this::toAdminDTO);
     }
+
+    public List<ProductSuggestDTO> suggestByName(String q, int limit) {
+        if (q == null || q.isBlank()) return List.of();
+
+        int top = Math.min(Math.max(limit, 1), 20);
+        var page = PageRequest.of(0, top);
+
+        // repo sẽ order theo updatedAt desc (nếu có) hoặc id desc
+        List<Product> list = productRepository.searchTop(q.trim(), page);
+
+        return list.stream()
+                .map(p -> new ProductSuggestDTO(
+                        p.getId(),
+                        p.getName(),
+                        minVariantPrice(p),
+                        pickThumb(p)
+                ))
+                .toList();
+    }
+
+    private BigDecimal minVariantPrice(Product p) {
+        // an toàn nếu chưa load variants
+        return p.getVariants() == null ? BigDecimal.ZERO :
+                p.getVariants().stream()
+                        .map(ProductVariant::getPrice)
+                        .filter(Objects::nonNull)
+                        .min(Comparator.naturalOrder())
+                        .orElse(BigDecimal.ZERO);
+    }
+
+    private String pickThumb(Product p) {
+        // ưu tiên field ảnh chính nếu có, không thì lấy ảnh đầu tiên
+        if (p.getImageUrl() != null && !p.getImageUrl().isBlank()) {
+            return p.getImageUrl();
+        }
+        return productImageRepository.findByProductId(p.getId()).stream()
+                .map(ProductImage::getImageUrl)
+                .findFirst()
+                .orElse(null);
+    }
+
 
 
 }

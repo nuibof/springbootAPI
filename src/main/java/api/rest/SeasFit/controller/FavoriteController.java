@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/favorite")
@@ -18,44 +19,57 @@ public class FavoriteController {
     private final UserService userService;
     private final JwtUtil jwtUtil;
 
+    private ResponseEntity<?> unauthorized(String msg) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(msg);
+    }
+
+    private User getAuthenticatedUser(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Thiếu token xác thực");
+        }
+        String token = authHeader.substring(7);
+        String username = jwtUtil.extractUsername(token);
+        if (username == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token không hợp lệ");
+        }
+        User user = userService.findByUserName(username);
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Người dùng không tồn tại");
+        }
+        return user;
+    }
+
     @PostMapping("/toggle")
     public ResponseEntity<?> toggleFavorite(
-            @CookieValue(value = "jwtToken", required = false) String token,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestParam Long productId
     ) {
-        User user = getUserFromToken(token);
-        if (user == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Người dùng chưa đăng nhập.");
+        try {
+            User user = getAuthenticatedUser(authHeader);
+            boolean liked = favoriteService.toggleFavorite(user.getId(), productId);
+            return ResponseEntity.ok(liked);
+        } catch (RuntimeException e) {
+            return unauthorized(e.getMessage());
         }
-
-        boolean liked = favoriteService.toggleFavorite(user.getId(), productId);
-        return ResponseEntity.ok(liked);
     }
 
     @GetMapping("/status")
     public ResponseEntity<?> isFavorited(
-            @CookieValue(value = "jwtToken", required = false) String token,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestParam Long productId
     ) {
-        User user = getUserFromToken(token);
-        if (user == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Người dùng chưa đăng nhập.");
+        try {
+            User user = getAuthenticatedUser(authHeader);
+            boolean liked = favoriteService.isFavorited(user.getId(), productId);
+            return ResponseEntity.ok(liked);
+        } catch (RuntimeException e) {
+            return unauthorized(e.getMessage());
         }
-
-        boolean liked = favoriteService.isFavorited(user.getId(), productId);
-        return ResponseEntity.ok(liked);
     }
 
     @GetMapping("/count")
     public ResponseEntity<?> getFavoriteCount(@RequestParam Long productId) {
         long count = favoriteService.getFavoriteCount(productId);
         return ResponseEntity.ok(count);
-    }
-
-    private User getUserFromToken(String token) {
-        if (token == null || token.isEmpty()) return null;
-        String username = jwtUtil.extractUsername(token);
-        if (username == null) return null;
-        return userService.findByUserName(username);
     }
 }

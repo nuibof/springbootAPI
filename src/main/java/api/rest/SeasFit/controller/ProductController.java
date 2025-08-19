@@ -1,40 +1,50 @@
 package api.rest.SeasFit.controller;
 
+import api.rest.SeasFit.dto.ProductCardDTO;
 import api.rest.SeasFit.dto.ProductDetailDTO;
 import api.rest.SeasFit.dto.ProductListDTO;
+import api.rest.SeasFit.dto.ProductSuggestDTO;
 import api.rest.SeasFit.entity.Product;
-import org.springframework.data.domain.Sort;
-import org.springframework.web.bind.annotation.*;
 import api.rest.SeasFit.service.ProductService;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.util.Collections;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/products")
 public class ProductController {
-    private final ProductService productService;
 
+    private final ProductService productService;
     public ProductController(ProductService productService) {
         this.productService = productService;
     }
 
-    @GetMapping("/products")
-     public List<Product> getAllProducts() {
-         return productService.findAll();
-     }
+    // GET /api/products
+    @GetMapping
+    public List<Product> getAllProducts() {
+        return productService.findAll();
+    }
 
-    @GetMapping("/products/gender/{gender}")
-    public List<Product> getProductsByGender(@PathVariable String gender) {
+    // GET /api/products/gender/{gender}
+    @GetMapping("/gender/{gender}")
+    public List<ProductCardDTO> getProductsByGender(@PathVariable String gender) {
         return productService.findByGender(gender);
     }
-    @GetMapping("/products/{id}")
+
+    // GET /api/products/{id}
+    @GetMapping("/{id}")
     public ProductDetailDTO getProductById(@PathVariable Long id) {
         return productService.getProductDetail(id);
     }
 
-    @GetMapping("/products/page")
+    // GET /api/products/page
+    // sort: "price,asc" | "price,desc"  => map sang Sort.by("dummy") để service sort thủ công theo price của DTO
+    @GetMapping("/page")
     public Page<ProductListDTO> getProductsPage(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "8") int size,
@@ -45,21 +55,28 @@ public class ProductController {
             @RequestParam(required = false) BigDecimal maxPrice,
             @RequestParam(required = false) String sort
     ) {
-
         Sort sortObject = Sort.unsorted();
-
         if ("price,asc".equalsIgnoreCase(sort)) {
-            sortObject = Sort.by(Sort.Order.asc("price"));
+            sortObject = Sort.by(Sort.Order.asc("dummy"));
         } else if ("price,desc".equalsIgnoreCase(sort)) {
-            sortObject = Sort.by(Sort.Order.desc("price"));
+            sortObject = Sort.by(Sort.Order.desc("dummy"));
         }
-
-
 
         return productService.findAllWithFilters(
                 categoryId, colorId, sizeId, minPrice, maxPrice, page, size, sortObject
         );
     }
 
-
+    // GET /api/products/suggest?q=...&limit=8
+    @GetMapping("/suggest")
+    public ResponseEntity<List<ProductSuggestDTO>> suggest(
+            @RequestParam("q") String q,
+            @RequestParam(value = "limit", defaultValue = "8") int limit
+    ) {
+        if (q == null || q.trim().isEmpty()) {
+            return ResponseEntity.ok(Collections.emptyList());
+        }
+        int top = Math.min(Math.max(limit, 1), 20);
+        return ResponseEntity.ok(productService.suggestByName(q.trim(), top));
+    }
 }

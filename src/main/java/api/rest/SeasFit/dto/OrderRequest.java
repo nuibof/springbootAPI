@@ -6,10 +6,14 @@ import java.util.List;
 @Data
 public class OrderRequest {
     private Long addressId;
-    private String note;
     private String paymentMethod;
-    private int shippingFee;
+    private Integer shippingFee;
+    private String note;
     private String voucherCode;
-    private Integer discountAmount;
     private List<OrderItemRequest> items;
+
+    // NEW: list id của cart items được chọn
+    private List<Long> cartItemIds;
+
+    // getters/setters ...
 }

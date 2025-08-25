@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.*;
 
 import java.util.stream.Collectors;
@@ -81,24 +82,26 @@ public class ProductService {
     @Transactional
     public void deleteById(Long productId) {
         // 1) Xoá các bảng không ràng buộc lịch sử
-        reviewRepository.deleteByProductId(productId);
-        favoriteRepository.deleteByProductId(productId);
-        cartItemRepository.deleteByProductId(productId);
-        inventoryRepository.deleteByProductId(productId);
-        productImageRepository.deleteByProductId(productId); // nếu ảnh có FK mềm thì chuyển sang soft-delete
+        productRepository.softDeleteById(productId);
 
-        // 2) Kiểm tra có đơn hàng tham chiếu variant không
-        boolean hasOrders = orderItemRepository.existsByProductVariant_Product_Id(productId);
-
-        if (hasOrders) {
-            // 2a) Không được xoá cứng → soft-delete variants + product
-            productVariantRepository.softDeleteByProductId(productId); // update deleted=1, active=0
-            productRepository.softDeleteById(productId);               // update deleted=1, active=0
-        } else {
-            // 2b) Không có đơn nào → cho phép xoá cứng
-            productVariantRepository.deleteByProductId(productId);
-            productRepository.deleteById(productId);
-        }
+//        reviewRepository.deleteByProductId(productId);
+//        favoriteRepository.deleteByProductId(productId);
+            cartItemRepository.deleteByVariant_Product_Id(productId);
+//        inventoryRepository.deleteByProductId(productId);
+//        productImageRepository.deleteByProductId(productId); // nếu ảnh có FK mềm thì chuyển sang soft-delete
+//
+//        // 2) Kiểm tra có đơn hàng tham chiếu variant không
+//        boolean hasOrders = orderItemRepository.existsByProductVariant_Product_Id(productId);
+//
+//        if (hasOrders) {
+//            // 2a) Không được xoá cứng → soft-delete variants + product
+//            productVariantRepository.softDeleteByProductId(productId); // update deleted=1, active=0
+//                         // update deleted=1, active=0
+//        } else {
+//            // 2b) Không có đơn nào → cho phép xoá cứng
+//            productVariantRepository.deleteByProductId(productId);
+//            productRepository.deleteById(productId);
+//        }
     }
 
 
@@ -113,7 +116,7 @@ public class ProductService {
             int size,
             Sort sort
     ) {
-
+        // 1) Lấy data (join theo color/size nếu có); KHÔNG lọc min/max ở DB
         Page<Product> products = productRepository.findAll((root, query, cb) -> {
 
             if (query.getResultType() != Long.class && query.getResultType() != long.class) {
@@ -121,59 +124,74 @@ public class ProductService {
             }
 
             List<Predicate> predicates = new ArrayList<>();
-
-            // Chỉ l ấy sản phẩm đang hoạt động
             predicates.add(cb.equal(root.get("status"), "ACTIVE"));
 
-            if (categoryId != null) {
-                predicates.add(cb.equal(root.get("category").get("id"), categoryId));
-            }
-
-            if (colorId != null || sizeId != null || minPrice != null || maxPrice != null) {
-                Join<Object, Object> variantJoin = root.join("variants", JoinType.INNER);
-
+            // join variant để lọc color/size (nếu cần)
+            if (colorId != null || sizeId != null) {
+                Join<Object, Object> vj = root.join("variants", JoinType.INNER);
                 if (colorId != null) {
-                    predicates.add(cb.equal(variantJoin.get("color").get("id"), colorId));
+                    predicates.add(cb.equal(vj.get("color").get("id"), colorId));
                 }
                 if (sizeId != null) {
-                    predicates.add(cb.equal(variantJoin.get("size").get("id"), sizeId));
-                }
-                if (minPrice != null) {
-                    predicates.add(cb.greaterThanOrEqualTo(variantJoin.get("price"), minPrice));
-                }
-                if (maxPrice != null) {
-                    predicates.add(cb.lessThanOrEqualTo(variantJoin.get("price"), maxPrice));
+                    predicates.add(cb.equal(vj.get("size").get("id"), sizeId));
                 }
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));
         }, Pageable.unpaged());
 
+        LocalDateTime now = LocalDateTime.now();
+
+        // 2) Map sang DTO có finalPrice + onSale
         List<ProductListDTO> dtoList = products.getContent().stream()
                 .map(product -> {
-                    BigDecimal minVariantPrice = product.getVariants().stream()
+                    // Tập variant hợp lệ của sản phẩm
+                    List<ProductVariant> vars = product.getVariants();
+
+                    // min giá gốc theo sản phẩm
+                    BigDecimal minOriginal = vars.stream()
                             .map(ProductVariant::getPrice)
                             .filter(Objects::nonNull)
                             .min(Comparator.naturalOrder())
                             .orElse(BigDecimal.ZERO);
 
-                    Map<Integer, Color> colorMap = product.getVariants().stream()
+                    // min finalPrice theo sản phẩm
+                    BigDecimal minFinal = vars.stream()
+                            .map(v -> finalPrice(
+                                    v.getPrice(),
+                                    v.getSaleAmount(),  // <-- field mới trong entity
+                                    v.getSaleFrom(),
+                                    v.getSaleTo(),
+                                    now))
+                            .min(Comparator.naturalOrder())
+                            .orElse(minOriginal);
+
+                    boolean onSale = minFinal.compareTo(minOriginal) < 0;
+
+                    // Color previews (đổi nghĩa: price = min FINAL price theo màu)
+                    Map<Integer, Color> colorMap = vars.stream()
                             .map(ProductVariant::getColor)
                             .collect(Collectors.toMap(Color::getId, c -> c, (c1, c2) -> c1));
 
                     List<ColorDTO> colorPreviews = colorMap.values().stream()
                             .map(color -> {
-                                List<ProductVariant> colorVariants = product.getVariants().stream()
+                                List<ProductVariant> byColor = vars.stream()
                                         .filter(v -> v.getColor().getId().equals(color.getId()))
                                         .toList();
 
-                                BigDecimal minPriceForColor = colorVariants.stream()
-                                        .map(ProductVariant::getPrice)
-                                        .filter(Objects::nonNull)
+                                // min FINAL price theo màu
+                                BigDecimal minFinalColor = byColor.stream()
+                                        .map(v -> finalPrice(
+                                                v.getPrice(),
+                                                v.getSaleAmount(),
+                                                v.getSaleFrom(),
+                                                v.getSaleTo(),
+                                                now))
                                         .min(Comparator.naturalOrder())
                                         .orElse(BigDecimal.ZERO);
 
-                                List<SizeDTO> sizesForColor = colorVariants.stream()
+                                // sizes theo màu (giữ nguyên)
+                                List<SizeDTO> sizesForColor = byColor.stream()
                                         .map(ProductVariant::getSize)
                                         .filter(Objects::nonNull)
                                         .collect(Collectors.collectingAndThen(
@@ -190,18 +208,21 @@ public class ProductService {
                                         .findFirst()
                                         .orElse(null);
 
+                                // GIỮ constructor cũ: ... imagePreview, price, sizes
+                                // => ở đây "price" = minFinalColor để FE hiện đúng giá đang sale
                                 return new ColorDTO(
                                         color.getId(),
                                         color.getName(),
                                         color.getHexCode(),
                                         imagePreview,
-                                        minPriceForColor,
+                                        minFinalColor,
                                         sizesForColor
                                 );
                             })
                             .toList();
 
-                    List<SizeDTO> sizes = product.getVariants().stream()
+                    // sizes toàn sp (giữ nguyên)
+                    List<SizeDTO> sizes = vars.stream()
                             .map(ProductVariant::getSize)
                             .filter(Objects::nonNull)
                             .collect(Collectors.collectingAndThen(
@@ -211,28 +232,52 @@ public class ProductService {
                                             .toList()
                             ));
 
+                    // ✅ ProductListDTO mở rộng: thêm finalPrice + onSale
                     return new ProductListDTO(
                             product.getId(),
                             product.getName(),
                             product.getImageUrl(),
-                            minVariantPrice,
+                            minOriginal,          // giá gốc nhỏ nhất
+                            minFinal,             // giá sau sale nhỏ nhất
+                            onSale,               // có đang sale không
                             colorPreviews,
                             sizes
                     );
+                    // cần có setter trong DTO
                 })
                 .toList();
 
+        // 3) Lọc khoảng giá theo FINAL price (fallback original nếu null)
+        if (minPrice != null) {
+            dtoList = dtoList.stream()
+                    .filter(p -> {
+                        BigDecimal base = p.getFinalPrice() != null ? p.getFinalPrice() : p.getPrice();
+                        return base.compareTo(minPrice) >= 0;
+                    })
+                    .toList();
+        }
+        if (maxPrice != null) {
+            dtoList = dtoList.stream()
+                    .filter(p -> {
+                        BigDecimal base = p.getFinalPrice() != null ? p.getFinalPrice() : p.getPrice();
+                        return base.compareTo(maxPrice) <= 0;
+                    })
+                    .toList();
+        }
+
+        // 4) Sort theo FINAL price khi sort=dummy (giữ cú pháp cũ “price,asc|desc” ở controller)
         if (sort.isSorted()) {
             Sort.Order order = sort.iterator().next();
             if ("dummy".equals(order.getProperty())) {
-                Comparator<ProductListDTO> comparator = Comparator.comparing(ProductListDTO::getPrice);
-                if (order.getDirection().isDescending()) {
-                    comparator = comparator.reversed();
-                }
-                dtoList = dtoList.stream().sorted(comparator).toList();
+                Comparator<ProductListDTO> cmp = Comparator.comparing(p ->
+                        p.getFinalPrice() != null ? p.getFinalPrice() : p.getPrice()
+                );
+                if (order.getDirection().isDescending()) cmp = cmp.reversed();
+                dtoList = dtoList.stream().sorted(cmp).toList();
             }
         }
 
+        // 5) Tự phân trang
         int start = page * size;
         int end = Math.min(start + size, dtoList.size());
         List<ProductListDTO> pagedList = dtoList.subList(Math.min(start, end), end);
@@ -242,16 +287,22 @@ public class ProductService {
 
 
 
+
     public ProductDetailDTO getProductDetail(Long id) {
         Product product = productRepository.findById(id).orElseThrow();
 
         List<ProductVariant> variants = productVariantRepository.findByProductId(id);
-        List<ProductImage> images = productImageRepository.findByProductId(id);
-        List<Review> reviews = reviewRepository.findByProductId(id);
+        List<ProductImage> images   = productImageRepository.findByProductId(id);
+        List<Review> reviews        = reviewRepository.findByProductId(id);
+
+        LocalDateTime now = LocalDateTime.now();
 
         Map<Integer, ProductDetailDTO.ColorDTO> colorMap = new LinkedHashMap<>();
 
+        // ===== gom biến thể theo màu, map size + tính giá =====
         for (ProductVariant variant : variants) {
+            if (variant.getColor() == null || variant.getSize() == null) continue;
+
             int colorId = variant.getColor().getId();
             ProductDetailDTO.ColorDTO colorDTO = colorMap.computeIfAbsent(colorId, k -> {
                 ProductDetailDTO.ColorDTO dto = new ProductDetailDTO.ColorDTO();
@@ -259,21 +310,59 @@ public class ProductService {
                 dto.setName(variant.getColor().getName());
                 dto.setHex(variant.getColor().getHexCode());
                 dto.setSizes(new ArrayList<>());
-                dto.setImage(images.stream()
-                        .filter(img -> img.getColor().getId() == colorId)
-                        .findFirst()
+
+                // ảnh preview theo màu (nếu có)
+                String preview = images.stream()
+                        .filter(img -> img.getColor() != null && img.getColor().getId() == colorId)
                         .map(ProductImage::getImageUrl)
-                        .orElse(null));
+                        .findFirst()
+                        .orElse(null);
+                dto.setImage(preview);
+
+                // init các field tổng hợp
+                dto.setMinPrice(null);
+                dto.setMinFinalPrice(null);
+                dto.setOnSale(false);
                 return dto;
             });
 
+            // tính onSale cho biến thể
+            BigDecimal price = default0(variant.getPrice());
+            BigDecimal saleAmount = default0(variant.getSaleAmount());
+            LocalDateTime from = variant.getSaleFrom();
+            LocalDateTime to   = variant.getSaleTo();
+
+            boolean sizeOnSale =
+                    saleAmount.compareTo(BigDecimal.ZERO) > 0 &&
+                            (from == null || !now.isBefore(from)) &&
+                            (to   == null || !now.isAfter(to));
+
+            BigDecimal effectiveSale = sizeOnSale ? saleAmount : BigDecimal.ZERO;
+            BigDecimal finalPrice = price.subtract(effectiveSale);
+            if (finalPrice.compareTo(BigDecimal.ZERO) < 0) finalPrice = BigDecimal.ZERO;
+
+            // add size
             ProductDetailDTO.SizeDTO sizeDTO = new ProductDetailDTO.SizeDTO();
             sizeDTO.setId(variant.getSize().getId());
             sizeDTO.setLabel(variant.getSize().getLabel());
-            sizeDTO.setQuantity(variant.getQuantity());
+            sizeDTO.setQuantity(defaultInt(variant.getQuantity()));
+
+            sizeDTO.setPrice(price);
+            sizeDTO.setSaleAmount(saleAmount);
+            sizeDTO.setFinalPrice(finalPrice);
+            sizeDTO.setSaleFrom(from);
+            sizeDTO.setSaleTo(to);
+            sizeDTO.setOnSale(sizeOnSale);
+
             colorDTO.getSizes().add(sizeDTO);
+
+            // cập nhật tổng hợp theo màu
+            colorDTO.setMinPrice(minBD(colorDTO.getMinPrice(), price));
+            colorDTO.setMinFinalPrice(minBD(colorDTO.getMinFinalPrice(), finalPrice));
+            if (sizeOnSale) colorDTO.setOnSale(true);
         }
 
+        // ===== Reviews =====
         List<ProductDetailDTO.ReviewDTO> reviewDTOs = reviews.stream().map(review -> {
             ProductDetailDTO.ReviewDTO dto = new ProductDetailDTO.ReviewDTO();
             dto.setId(review.getId());
@@ -289,25 +378,53 @@ public class ProductService {
         int favoriteCount = favoriteRepository.countByProductId(id);
         Double rating = reviewRepository.avgRatingByProductId(id);
 
+        // ===== Tổng hợp cấp sản phẩm =====
+        BigDecimal minOriginal = null;
+        BigDecimal minFinal    = null;
+        boolean anyOnSale      = false;
+
+        for (ProductDetailDTO.ColorDTO c : colorMap.values()) {
+            minOriginal = minBD(minOriginal, default0(c.getMinPrice()));
+            minFinal    = minBD(minFinal,    default0(c.getMinFinalPrice()));
+            if (c.isOnSale()) anyOnSale = true;
+        }
+
+        // fallback khi không có biến thể
+        if (minOriginal == null) minOriginal = BigDecimal.ZERO;
+        if (minFinal == null)    minFinal    = minOriginal;
+
         ProductDetailDTO dto = new ProductDetailDTO();
         dto.setId(product.getId());
         dto.setName(product.getName());
         dto.setDescription(product.getDescription());
-        BigDecimal minPrice = variants.stream()
-                .map(ProductVariant::getPrice)
-                .filter(Objects::nonNull)
-                .min(Comparator.naturalOrder())
-                .orElse(BigDecimal.ZERO);
 
-        dto.setPrice(minPrice);
+        // giữ trường cũ là "giá gốc rẻ nhất"
+        dto.setPrice(minOriginal);
+        // bổ sung
+        dto.setFinalPrice(minFinal);
+        dto.setOnSale(anyOnSale);
 
         dto.setColors(new ArrayList<>(colorMap.values()));
         dto.setFavorites(favoriteCount);
         dto.setRating(rating);
+        dto.setStatus(product.getStatus());
         dto.setReviews(reviewDTOs);
 
         return dto;
     }
+
+    private static BigDecimal default0(BigDecimal x) {
+        return x == null ? BigDecimal.ZERO : x;
+    }
+    private static int defaultInt(Integer x) {
+        return x == null ? 0 : x;
+    }
+    private static BigDecimal minBD(BigDecimal a, BigDecimal b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        return a.compareTo(b) <= 0 ? a : b;
+    }
+
 
 
     public int getTotalProducts() {
@@ -399,6 +516,39 @@ public class ProductService {
                 .orElse(null);
     }
 
+    private boolean isSaleActive(LocalDateTime from, LocalDateTime to, LocalDateTime now) {
+        if (from != null && now.isBefore(from)) return false;
+        if (to != null && now.isAfter(to)) return false;
+        return true;
+    }
 
+    private BigDecimal finalPrice(BigDecimal price,
+                                  BigDecimal saleAmount,
+                                  LocalDateTime from,
+                                  LocalDateTime to,
+                                  LocalDateTime now) {
+        if (price == null) return BigDecimal.ZERO;
+        if (saleAmount == null || saleAmount.signum() <= 0) return price;
+        if (!isSaleActive(from, to, now)) return price;
+
+        BigDecimal fp = price.subtract(saleAmount);
+        return fp.signum() < 0 ? BigDecimal.ZERO : fp;
+    }
+
+    @Transactional
+    public void updateSaleForProduct(Long productId, UpdateSaleRequest req) {
+        if (req.isClear()) {
+            productVariantRepository.clearSale(productId);
+            return;
+        }
+        BigDecimal amt = req.getSaleAmount() == null ? BigDecimal.ZERO : req.getSaleAmount();
+        if (amt.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("saleAmount must be >= 0");
+        }
+        if (req.getSaleFrom() != null && req.getSaleTo() != null && req.getSaleFrom().isAfter(req.getSaleTo())) {
+            throw new IllegalArgumentException("saleFrom must be before saleTo");
+        }
+        productVariantRepository.bulkUpdateSale(productId, amt, req.getSaleFrom(), req.getSaleTo());
+    }
 
 }

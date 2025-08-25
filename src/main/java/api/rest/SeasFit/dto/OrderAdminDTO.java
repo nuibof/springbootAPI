@@ -17,7 +17,7 @@ public class OrderAdminDTO {
     private String paymentMethod;
     private String voucherCode;
     private String note;
-    private BigDecimal totalAmount;
+    private Integer totalAmount;
     private BigDecimal discountAmount;
     private int shippingFee;
     private String cancelReason;

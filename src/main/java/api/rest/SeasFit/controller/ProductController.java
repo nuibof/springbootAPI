@@ -46,14 +46,9 @@ public class ProductController {
     // sort: "price,asc" | "price,desc"  => map sang Sort.by("dummy") để service sort thủ công theo price của DTO
     @GetMapping("/page")
     public Page<ProductListDTO> getProductsPage(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "8") int size,
-            @RequestParam(required = false) Long categoryId,
-            @RequestParam(required = false) Integer colorId,
-            @RequestParam(required = false) Integer sizeId,
-            @RequestParam(required = false) BigDecimal minPrice,
-            @RequestParam(required = false) BigDecimal maxPrice,
-            @RequestParam(required = false) String sort
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "8") int size, @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) Integer colorId, @RequestParam(required = false) Integer sizeId, @RequestParam(required = false) BigDecimal minPrice,
+            @RequestParam(required = false) BigDecimal maxPrice, @RequestParam(required = false) String sort
     ) {
         Sort sortObject = Sort.unsorted();
         if ("price,asc".equalsIgnoreCase(sort)) {
@@ -70,8 +65,7 @@ public class ProductController {
     // GET /api/products/suggest?q=...&limit=8
     @GetMapping("/suggest")
     public ResponseEntity<List<ProductSuggestDTO>> suggest(
-            @RequestParam("q") String q,
-            @RequestParam(value = "limit", defaultValue = "8") int limit
+            @RequestParam("q") String q, @RequestParam(value = "limit", defaultValue = "8") int limit
     ) {
         if (q == null || q.trim().isEmpty()) {
             return ResponseEntity.ok(Collections.emptyList());

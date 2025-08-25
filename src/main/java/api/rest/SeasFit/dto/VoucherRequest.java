@@ -10,6 +10,7 @@ public class VoucherRequest {
     private Double minOrderAmount;
     private String description;
     private Integer quantity;
+    private Integer maxDiscountValue; // optional, can be null
     private String startDate; // format yyyy-MM-dd
     private String endDate;
     private Boolean isActive;

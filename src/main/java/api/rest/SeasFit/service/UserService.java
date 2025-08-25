@@ -21,14 +21,6 @@ public class UserService {
         return userRepo.findByUserName(userName);
     }
 
-    public User findByEmail(String email) {
-        return userRepo.findByEmail(email);
-    }
-
-    public User findByPhone(String phone) {
-        return userRepo.findByPhone(phone);
-    }
-
     public int getTotalUser() {
         return (int) userRepo.count();
     }

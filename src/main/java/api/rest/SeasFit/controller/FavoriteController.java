@@ -1,5 +1,6 @@
 package api.rest.SeasFit.controller;
 
+import api.rest.SeasFit.dto.FavoriteItemDTO;
 import api.rest.SeasFit.entity.User;
 import api.rest.SeasFit.security.JwtUtil;
 import api.rest.SeasFit.service.FavoriteService;
@@ -7,8 +8,11 @@ import api.rest.SeasFit.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/favorite")
@@ -71,5 +75,14 @@ public class FavoriteController {
     public ResponseEntity<?> getFavoriteCount(@RequestParam Long productId) {
         long count = favoriteService.getFavoriteCount(productId);
         return ResponseEntity.ok(count);
+    }
+
+    @GetMapping("/my-list")
+    public ResponseEntity<List<FavoriteItemDTO>> myFavorites(
+            @RequestHeader(value = "Authorization", required = false) String authHeader
+    ) {
+        User user = getAuthenticatedUser(authHeader);
+        List<FavoriteItemDTO> items = favoriteService.listFavorites(user.getId());
+        return ResponseEntity.ok(items);
     }
 }

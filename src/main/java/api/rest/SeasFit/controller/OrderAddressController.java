@@ -61,7 +61,7 @@ public class OrderAddressController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn hàng"));
 
         // Nếu không phải admin thì phải là chủ đơn
-        if (!isAdmin(user) && (order.getUserId() == null || !order.getUserId().equals(user.getId()))) {
+        if (! user.getRole().equals("ROLE_ADMIN") && (order.getUserId() == null || !order.getUserId().equals(user.getId()))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem địa chỉ của đơn này");
         }
 

@@ -3,9 +3,11 @@ package api.rest.SeasFit.controller;
 import api.rest.SeasFit.dto.AddToCartDTO;
 import api.rest.SeasFit.dto.CartItemDTO;
 import api.rest.SeasFit.entity.CartItem;
+import api.rest.SeasFit.entity.Product;
 import api.rest.SeasFit.entity.ProductVariant;
 import api.rest.SeasFit.entity.User;
 import api.rest.SeasFit.repository.CartItemRepository;
+import api.rest.SeasFit.repository.ProductRepository;
 import api.rest.SeasFit.repository.ProductVariantRepository;
 import api.rest.SeasFit.security.JwtUtil;
 import api.rest.SeasFit.service.CartService;
@@ -30,6 +32,7 @@ public class CartController {
     private final JwtUtil jwtUtil;
     private final ProductVariantRepository productVariantRepository;
     private final CartItemRepository cartItemRepository;
+    private final ProductRepository productRepository;
 
     private ResponseEntity<?> unauthorized(String msg) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(msg);
@@ -65,7 +68,8 @@ public class CartController {
             int itemCount = cartService.getCartItemCount(user.getId());
             return ResponseEntity.ok(itemCount);
         } catch (RuntimeException e) {
-            return unauthorized(e.getMessage());
+            int zero = 0;
+            return ResponseEntity.ok(zero);
         }
     }
 
@@ -84,10 +88,12 @@ public class CartController {
             }
             User user = getAuthenticatedUser(authHeader);
             System.out.println("AddToCartDTO: " + dto);
-
+            Product product = productRepository.findById(dto.getProductId()).get();
+            if (product.getStatus().equals("DELETE")) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Sản phẩm đã xóa bởi ADMIN!"));
+            }
             Optional<ProductVariant> variantOpt = productVariantRepository
                     .findByProductIdAndColorIdAndSizeId(dto.getProductId(), dto.getColorId(), dto.getSizeId());
-
             if (variantOpt.isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Không tìm thấy biến thể sản phẩm"));
             }
@@ -169,7 +175,13 @@ public class CartController {
             if (colorId != null && sizeId != null) {
                 cartService.updateItemVariant(user.getId(), id, colorId, sizeId);
             }
+            ProductVariant variant = cartService.getProductVariantByItemId(id);
+            Product product = variant.getProduct();
 
+            if ("DELETE".equals(product.getStatus())) {
+                return ResponseEntity.badRequest().body("Sản phẩm đã bị ADMIN xoá, không thể cập nhật giỏ hàng!"
+                );
+            }
             return ResponseEntity.ok("Cập nhật giỏ hàng thành công");
         } catch (RuntimeException e) {
             return unauthorized(e.getMessage());

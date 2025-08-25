@@ -1,5 +1,6 @@
 package api.rest.SeasFit.repository;
 
+import api.rest.SeasFit.dto.FavoriteAdminDTO;
 import api.rest.SeasFit.entity.Product;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -30,6 +31,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
         SELECT *
         FROM product
         WHERE gender = ?
+            AND
+                status = 'ACTIVE'
     """, nativeQuery = true)
     List<Product> findByGender(int gender);
 
@@ -76,10 +79,27 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     @Query("""
     select p from Product p
-    where lower(p.name) like lower(concat('%', :q, '%'))
+    where lower(p.name) like lower(concat('%', :q, '%')) AND status like 'ACTIVE'
     order by p.createdAt desc, p.id desc
 """)
     List<Product> searchTop(@Param("q") String q, Pageable pageable);
 
     Page<Product> findByNameContainingIgnoreCase(String q, Pageable pageable);
+
+    @Query(value = """
+    select new api.rest.SeasFit.dto.FavoriteAdminDTO(
+      p.id, p.name, p.imageUrl, count(f.id)
+    )
+    from Product p
+    left join Favorite f on f.productId = p.id
+    where (:q is null or :q = '' or lower(p.name) like lower(concat('%', :q, '%')))
+    group by p.id, p.name, p.imageUrl
+    order by count(f.id) desc, p.id asc
+    """,
+            countQuery = """
+    select count(p.id)
+    from Product p
+    where (:q is null or :q = '' or lower(p.name) like lower(concat('%', :q, '%')))
+    """)
+    Page<FavoriteAdminDTO> pageFavoriteStats(@Param("q") String q, Pageable pageable);
 }

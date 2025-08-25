@@ -15,4 +15,6 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
     Double avgRatingByProductId(@Param("productId") Long productId);
 
     void deleteByProductId(Long productId);
+
+    Long countByUserId(Long id);
 }

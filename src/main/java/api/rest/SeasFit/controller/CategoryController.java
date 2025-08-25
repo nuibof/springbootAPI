@@ -18,21 +18,5 @@ public class CategoryController {
     public List<Category> getAllCategories() {
         return categoryService.findAll();
     }
-    @PostMapping("/add")
-    public Category addCategory(Category category) {
-        return categoryService.save(category);
-    }
-    @PutMapping("/{id}")
-    public Category updateCategory(@PathVariable Long id, @RequestBody Category updated) {
-        Category existing = categoryService.findById(id).orElseThrow(() -> new RuntimeException("Not found"));
-        existing.setName(updated.getName());
-        return categoryService.save(existing);
-    }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@PathVariable Long id) {
-        categoryService.deleteById(id);
-        return ResponseEntity.ok("Deleted");
-    }
 
 }

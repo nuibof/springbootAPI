@@ -52,4 +52,7 @@ public class Voucher {
 
     @Column(name = "updated_at")
     private LocalDate updatedAt;
+
+    @Column(name = "max_discount_value")
+    private BigDecimal maxDiscountValue;
 }

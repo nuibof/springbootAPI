@@ -1,32 +1,30 @@
 package api.rest.SeasFit.controller;
 
 import api.rest.SeasFit.dto.OrderRequest;
+import api.rest.SeasFit.dto.UpdateOrderRequest;
 import api.rest.SeasFit.dto.VoucherApplyRequest;
 import api.rest.SeasFit.entity.Order;
 import api.rest.SeasFit.entity.User;
-import api.rest.SeasFit.entity.Voucher;
 import api.rest.SeasFit.repository.OrderRepository;
 import api.rest.SeasFit.repository.VoucherRepository;
 import api.rest.SeasFit.security.JwtUtil;
 import api.rest.SeasFit.service.OrderService;
 import api.rest.SeasFit.service.UserService;
-import api.rest.SeasFit.service.VoucherService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.math.RoundingMode;
 import java.util.Map;
 import java.util.Optional;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/orders") // ✅ Đảm bảo đúng path
+@RequestMapping("/api/orders")
 public class OrderController {
 
     private final OrderService orderService;
@@ -35,23 +33,37 @@ public class OrderController {
     private final OrderRepository orderRepository;
     private final VoucherRepository voucherRepository;
 
+    // ===== Helpers tiền tệ =====
+    private BigDecimal nvl(BigDecimal x) { return x != null ? x : BigDecimal.ZERO; }
+    private BigDecimal asMoney(Number n) { return n == null ? BigDecimal.ZERO : BigDecimal.valueOf(n.longValue()); }
+
+    /** Quy ước: totalAmount = merchandise subtotal (sau sale, trước voucher & ship) */
+    private BigDecimal payableOf(Order o) {
+        BigDecimal total = asMoney(o.getTotalAmount());
+        BigDecimal ship  = asMoney(o.getShippingFee());
+        BigDecimal disc  = nvl(o.getDiscountAmount());
+        BigDecimal res   = total.add(ship).subtract(disc);
+        return res.signum() < 0 ? BigDecimal.ZERO : res.setScale(0, RoundingMode.HALF_UP);
+    }
+
     private User getAuthenticatedUser(@RequestHeader(value = "Authorization", required = false) String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Thiếu token xác thực");
         }
-
         String token = authHeader.substring(7);
         String username = jwtUtil.extractUsername(token);
         if (username == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token không hợp lệ");
         }
-
         User user = userService.findByUserName(username);
         if (user == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Người dùng không tồn tại");
         }
-
         return user;
+    }
+
+    private Long getAuthenticatedUserId(String authHeader) {
+        return getAuthenticatedUser(authHeader).getId();
     }
 
     @PostMapping
@@ -61,8 +73,12 @@ public class OrderController {
         Order order = orderService.createOrder(user.getId(), request);
 
         return ResponseEntity.ok(Map.of(
-                "orderId", order.getId(),
-                "totalAmount", order.getTotalAmount()
+                "orderId",         order.getId(),
+                "status",          order.getStatus(),
+                "totalAmount",     order.getTotalAmount(),
+                "discountAmount",  nvl(order.getDiscountAmount()),
+                "shippingFee",     asMoney(order.getShippingFee()),
+                "payable",         payableOf(order)
         ));
     }
 
@@ -70,35 +86,36 @@ public class OrderController {
     public ResponseEntity<?> getOrderById(@PathVariable("id") Long id,
                                           @RequestHeader("Authorization") String authHeader) {
         try {
-            User user = getAuthenticatedUser(authHeader); // xác thực người dùng
+            User user = getAuthenticatedUser(authHeader);
 
             Optional<Order> orderOpt = orderRepository.findByIdAndUserId(id, user.getId());
             if (orderOpt.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(Map.of("error", "Không tìm thấy đơn hàng"));
             }
-
-            return ResponseEntity.ok(orderOpt.get());
+            Order o = orderOpt.get();
+            return ResponseEntity.ok(Map.of(
+                    "order",   o,
+                    "payable", payableOf(o)
+            ));
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("error", e.getMessage()));
         }
     }
 
-    @GetMapping()
-    public ResponseEntity<?> getAllOrders(@RequestHeader ("Authorization") String authHeader) {
-
+    @GetMapping
+    public ResponseEntity<?> getAllOrders(@RequestHeader("Authorization") String authHeader) {
         try {
-            User user = getAuthenticatedUser(authHeader); // xác thực người dùng
+            User user = getAuthenticatedUser(authHeader);
             return ResponseEntity.ok(orderService.getAllOrdersByUserId(user.getId()));
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("error", e.getMessage()));
         }
-
     }
 
-    // Huỷ đơn hàng (nhận JSON body nhưng không dùng DTO)
+    // Huỷ đơn hàng (user-side)
     @PostMapping("/{id}/cancel")
     @Transactional
     public ResponseEntity<?> cancelOrder(@PathVariable Long id,
@@ -120,50 +137,89 @@ public class OrderController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thiếu lý do huỷ (reason)");
         }
 
-        order.setStatus("CANCELLED");
-        order.setCancelReason(reason.toUpperCase()); // cột mới: cancel_reason
+        // set reason/note trên entity đang managed
+        order.setCancelReason(reason.toUpperCase());
         if (!note.isEmpty()) {
-            order.setNote(note); // dùng cột note sẵn có
+            order.setNote(note);
         }
 
-        orderRepository.save(order); // updated_at auto
+        // đổi trạng thái qua service để hoàn kho + xoá revenue đúng chuẩn
+        orderService.updateOrderStatus(order.getId(), "CANCELLED");
 
         return ResponseEntity.ok(Map.of(
                 "message", "Đơn hàng đã được huỷ thành công",
                 "orderId", order.getId(),
-                "reason", order.getCancelReason()
+                "reason",  order.getCancelReason()
         ));
     }
 
-
+    // Áp dụng mã giảm giá (preview hoặc ghi vào đơn PENDING)
     @PostMapping("/voucher/apply")
-    public ResponseEntity<?> applyVoucher(@RequestBody VoucherApplyRequest request){
-        Voucher voucher = voucherRepository.findByCode(request.getCode())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Mã giảm giá không tồn tại"));
+    public ResponseEntity<?> applyVoucher(
+            @RequestBody VoucherApplyRequest request,
+            @RequestHeader("Authorization") String authHeader
+    ) {
+        Long userId = getAuthenticatedUserId(authHeader);
 
-
-        LocalDate today = LocalDate.now();
-        if (voucher.getStartDate().isAfter(today) || voucher.getEndDate().isBefore(today)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mã giảm giá đã hết hạn hoặc chưa bắt đầu");
+        // Có orderId => ghi thẳng vào đơn PENDING
+        if (request.getOrderId() != null) {
+            var res = orderService.applyVoucherToOrder(userId, request.getOrderId(), request.getCode());
+            return ResponseEntity.ok(res); // {orderId, voucherCode, discountAmount}
         }
 
-        if (!voucher.getIsActive() || voucher.getQuantity() <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mã giảm giá không khả dụng");
+
+        // Không có orderId => chỉ preview theo totalAmount client gửi
+        var preview = orderService.previewVoucherDiscount(
+                request.getCode(),
+                request.getTotalAmount()
+        );
+        return ResponseEntity.ok(Map.of(
+                "voucherCode", request.getCode(),
+                "discountAmount", preview
+        ));
+    }
+
+    @PutMapping("/{id}")
+    @Transactional
+    public ResponseEntity<?> updateOrder(@PathVariable Long id,
+                                         @RequestHeader("Authorization") String authHeader,
+                                         @RequestBody UpdateOrderRequest req) {
+        User user = getAuthenticatedUser(authHeader);
+
+        Order updated = orderService.updateOrderEditableFields(user.getId(), id, req);
+
+        return ResponseEntity.ok(Map.of(
+                "orderId",        updated.getId(),
+                "status",         updated.getStatus(),
+                "paymentMethod",  updated.getPaymentMethod(),
+                "shippingFee",    asMoney(updated.getShippingFee()),
+                "note",           updated.getNote(),
+                "totalAmount",    updated.getTotalAmount(),
+                "discountAmount", nvl(updated.getDiscountAmount()),
+                "payable",        payableOf(updated)
+        ));
+    }
+
+    @GetMapping("/order")
+    public ResponseEntity<?> getOrdersOrDraft(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestParam(required = false) Long orderId
+    ) {
+        User user = getAuthenticatedUser(authHeader);
+
+        if (orderId != null) {
+            // load 1 order cụ thể
+            Order order = orderRepository.findByIdAndUserId(orderId, user.getId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn"));
+
+            return ResponseEntity.ok(Map.of(
+                    "order",   order,
+                    "payable", payableOf(order)
+            ));
         }
 
-        if (request.getTotalAmount().compareTo(voucher.getMinOrderAmount()) < 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Đơn hàng không đủ điều kiện áp dụng mã giảm giá");
-        }
-
-        BigDecimal discountAmount = BigDecimal.ZERO;
-        if (voucher.getDiscountType().equals("fixed")) {
-            discountAmount = voucher.getDiscountValue();
-        } else if (voucher.getDiscountType().equals("percent")) {
-            discountAmount = request.getTotalAmount()
-                    .multiply(voucher.getDiscountValue().divide(BigDecimal.valueOf(100)));
-        }
-
-        return ResponseEntity.ok(Map.of("discountAmount", discountAmount));
+        // nếu không có param → trả list tất cả đơn
+        return ResponseEntity.ok(orderService.getAllOrdersByUserId(user.getId()));
     }
 
 }

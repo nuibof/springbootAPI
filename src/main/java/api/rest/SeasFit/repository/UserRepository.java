@@ -1,13 +1,15 @@
 package api.rest.SeasFit.repository;
 
 import api.rest.SeasFit.entity.User;
+import org.springframework.boot.autoconfigure.rsocket.RSocketProperties;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 
 import java.awt.print.Pageable;
 import java.util.List;
 
-public interface UserRepository extends JpaRepository<User, Long> {
+public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificationExecutor<User> {
     User findByUserName(String userName);
     User findByEmail(String email);
     User findByPhone(String phone);
@@ -17,6 +19,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query("SELECT u FROM User u ORDER BY u.createdAt DESC")
     List<User> findLatestUsers(Pageable pageable);
+
 
     List<User> findTop5ByOrderByCreatedAtDesc();
 

@@ -15,6 +15,11 @@ public class ProductListDTO {
     private String name;
     private String imageUrl;
     private BigDecimal price;
+    /** MỚI: min final price sau sale */
+    private BigDecimal finalPrice;
+
+    /** MỚI: có sale hay không */
+    private boolean onSale;
     private List<ColorDTO> colors;
     private List<SizeDTO> sizes;
 }

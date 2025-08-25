@@ -9,6 +9,9 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,7 +21,9 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
 
     Optional<ProductVariant> findByProductIdAndColorIdAndSizeId(Long productId, Long colorId, Long sizeId);
 
-    boolean existsByProductIdAndColorIdAndSizeId(Long productId, Long colorId, Long sizeId);
+
+    // >>> thêm method này để fix compile lỗi <<<
+    List<ProductVariant> findByProductIdIn(Collection<Long> productIds);
 
     // Khóa ghi
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -48,5 +53,30 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     // (Tùy chọn) Lấy cả deleted (native)
     @Query(value = "select * from product_variant where product_id = :productId", nativeQuery = true)
     List<ProductVariant> findAllIncludingDeletedByProductId(@Param("productId") Long productId);
+
+    @Modifying
+    @Query("""
+           update ProductVariant v
+              set v.saleAmount = :saleAmount,
+                  v.saleFrom   = :saleFrom,
+                  v.saleTo     = :saleTo
+            where v.product.id = :productId
+              and v.deleted = false
+           """)
+    int bulkUpdateSale(@Param("productId") Long productId,
+                       @Param("saleAmount") BigDecimal saleAmount,
+                       @Param("saleFrom") LocalDateTime saleFrom,
+                       @Param("saleTo") LocalDateTime saleTo);
+
+    @Modifying
+    @Query("""
+           update ProductVariant v
+              set v.saleAmount = 0,
+                  v.saleFrom   = null,
+                  v.saleTo     = null
+            where v.product.id = :productId
+              and v.deleted = false
+           """)
+    int clearSale(@Param("productId") Long productId);
 }
 

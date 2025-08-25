@@ -13,6 +13,7 @@ public class VoucherResponse {
     private String discountType;
     private String description;
     private Double minOrderAmount;
+    private Integer maxDiscountValue;
     private Integer quantity;
     private Boolean isActive;
     private LocalDate startDate;
@@ -27,6 +28,7 @@ public class VoucherResponse {
         dto.setDiscountType(entity.getDiscountType());
         dto.setMinOrderAmount(entity.getMinOrderAmount().doubleValue());
         dto.setQuantity(entity.getQuantity());
+        dto.setMaxDiscountValue(entity.getMaxDiscountValue() != null ? entity.getMaxDiscountValue().intValue() : null);
         dto.setIsActive(entity.getIsActive());
         dto.setStartDate(entity.getStartDate());
         dto.setEndDate(entity.getEndDate());

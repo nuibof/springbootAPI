@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -26,6 +27,17 @@ public class CartService {
     private final SizeRepository sizeRepository;
     private final ProductVariantRepository productVariantRepository;
 
+    /* ======================= Helpers ======================= */
+
+    private BigDecimal nvl(BigDecimal x) { return x != null ? x : BigDecimal.ZERO; }
+
+    private Cart getOrCreateCart(User user) {
+        return cartRepository.findByUser(user)
+                .orElseGet(() -> cartRepository.save(new Cart(null, user, LocalDateTime.now())));
+    }
+
+    /* ======================= Queries/Mutations ======================= */
+
     public ProductVariant getProductVariantByItemId(Long itemId) {
         CartItem item = cartItemRepository.findById(itemId)
                 .orElseThrow(() -> new RuntimeException("Item not found"));
@@ -34,46 +46,42 @@ public class CartService {
 
     @Transactional
     public void deleteItems(List<Long> ids, Long userId) {
-        cartItemRepository.deleteByIdInAndCartUserId(ids, userId);
+        cartItemRepository.deleteByCart_User_IdAndIdIn(userId, ids);
     }
 
-
-
-
-
+    @Transactional
     public ResponseEntity<?> addToCart(Long userId, AddToCartDTO req) {
         try {
             User user = userRepository.findById(userId)
                     .orElseThrow(() -> new RuntimeException("User not found"));
+            Cart cart = getOrCreateCart(user);
 
-            Cart cart = cartRepository.findByUser(user)
-                    .orElseGet(() -> cartRepository.save(new Cart(null, user, LocalDateTime.now())));
-
-            Product product = productRepository.findById(req.getProductId())
+            // validate entity tồn tại
+            productRepository.findById(req.getProductId())
                     .orElseThrow(() -> new RuntimeException("Product not found"));
-
-            Color color = colorRepository.findById(req.getColorId())
+            colorRepository.findById(req.getColorId())
                     .orElseThrow(() -> new RuntimeException("Color not found"));
-
-            Size size = sizeRepository.findById(req.getSizeId())
+            sizeRepository.findById(req.getSizeId())
                     .orElseThrow(() -> new RuntimeException("Size not found"));
 
             ProductVariant variant = productVariantRepository
-                    .findByProductIdAndColorIdAndSizeId(
-                            req.getProductId(),
-                            (long) Math.toIntExact(req.getColorId()),
-                            (long) Math.toIntExact(req.getSizeId())
-                    )
+                    .findByProductIdAndColorIdAndSizeId(req.getProductId(), req.getColorId(), req.getSizeId())
                     .orElseThrow(() -> new RuntimeException("Variant not found"));
 
+            if (!variant.isActive()) {
+                return ResponseEntity.badRequest().body("Biến thể hiện không mở bán");
+            }
 
+            Optional<CartItem> existing = cartItemRepository.findByCartAndVariant(cart, variant);
+            int newQty = existing.map(ci -> ci.getQuantity() + req.getQuantity()).orElse(req.getQuantity());
 
+            if (variant.getQuantity() != null && variant.getQuantity() < newQty) {
+                return ResponseEntity.badRequest().body("Không đủ tồn kho");
+            }
 
-            Optional<CartItem> existingItem = cartItemRepository.findByCartAndVariant(cart, variant);
-
-            if (existingItem.isPresent()) {
-                CartItem item = existingItem.get();
-                item.setQuantity(item.getQuantity() + req.getQuantity());
+            if (existing.isPresent()) {
+                CartItem item = existing.get();
+                item.setQuantity(newQty);
                 cartItemRepository.save(item);
                 return ResponseEntity.ok("Đã cập nhật số lượng sản phẩm trong giỏ hàng.");
             } else {
@@ -89,16 +97,19 @@ public class CartService {
         }
     }
 
+    /** FE cần finalPrice/onSale => map DTO có tính sale theo saleAmount/saleFrom/saleTo của Variant */
     public List<CartItemDTO> getCartItems(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
-        Cart cart = cartRepository.findByUser(user)
-                .orElseGet(() -> cartRepository.save(new Cart(null, user, LocalDateTime.now())));
+        Cart cart = getOrCreateCart(user);
+
+        // nếu bị N+1, đổi sang query join-fetch trong repository
         return cartItemRepository.findByCart(cart).stream()
                 .map(this::toDTO)
                 .toList();
     }
 
+    @Transactional
     public ResponseEntity<?> removeItem(Long userId, Long itemId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -116,13 +127,13 @@ public class CartService {
         return ResponseEntity.ok("Item removed");
     }
 
+    @Transactional
     public ResponseEntity<?> updateItemQuantity(Long userId, Long itemId, int quantity) {
         if (quantity <= 0) {
             return ResponseEntity.badRequest().body("Quantity must be greater than 0");
         }
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
-
         Cart cart = cartRepository.findByUser(user)
                 .orElseThrow(() -> new RuntimeException("Cart not found"));
 
@@ -133,10 +144,52 @@ public class CartService {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Item does not belong to your cart");
         }
 
+        ProductVariant v = item.getVariant();
+        if (v.getQuantity() != null && v.getQuantity() < quantity) {
+            return ResponseEntity.badRequest().body("Không đủ tồn kho");
+        }
+
         item.setQuantity(quantity);
         cartItemRepository.save(item);
         return ResponseEntity.ok("Quantity updated");
     }
+
+    @Transactional
+    public void updateItemVariant(Long userId, Long itemId, Long colorId, Long sizeId) {
+        CartItem item = cartItemRepository.findByIdAndCart_User_Id(itemId, userId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm trong giỏ hàng"));
+
+        ProductVariant newVariant = productVariantRepository
+                .findByProductIdAndColorIdAndSizeId(
+                        item.getVariant().getProduct().getId(), colorId, sizeId
+                )
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy biến thể phù hợp"));
+
+        if (!newVariant.isActive()) {
+            throw new RuntimeException("Biến thể hiện không mở bán");
+        }
+
+        // Nếu đã có item khác cùng variant mới -> gộp số lượng
+        Optional<CartItem> dup = cartItemRepository.findByCartAndVariant(item.getCart(), newVariant);
+        if (dup.isPresent() && !dup.get().getId().equals(item.getId())) {
+            CartItem other = dup.get();
+            int mergedQty = other.getQuantity() + item.getQuantity();
+            if (newVariant.getQuantity() != null && newVariant.getQuantity() < mergedQty) {
+                throw new RuntimeException("Không đủ tồn kho");
+            }
+            other.setQuantity(mergedQty);
+            cartItemRepository.delete(item);
+            cartItemRepository.save(other);
+        } else {
+            if (newVariant.getQuantity() != null && newVariant.getQuantity() < item.getQuantity()) {
+                throw new RuntimeException("Không đủ tồn kho");
+            }
+            item.setVariant(newVariant);
+            cartItemRepository.save(item);
+        }
+    }
+
+    /* ======================= Mapping ======================= */
 
     private CartItemDTO toDTO(CartItem item) {
         ProductVariant variant = item.getVariant();
@@ -144,12 +197,23 @@ public class CartService {
         Color color = variant.getColor();
         Size size = variant.getSize();
 
+        BigDecimal base = nvl(variant.getPrice());
+        BigDecimal eff  = nvl(variant.getEffectivePrice());  // ✅ dùng helper của entity
+        boolean onSale  = variant.isSaleActiveNow() && eff.compareTo(base) < 0;
+
+        // Ảnh: tuỳ schema; đang lấy ảnh product
+        String imageUrl = product.getImageUrl();
+
         return CartItemDTO.builder()
                 .id(item.getId())
                 .productId(product.getId())
                 .productName(product.getName())
-                .imageUrl(product.getImageUrl())
-                .price(variant.getPrice())
+                .imageUrl(imageUrl)
+
+                .price(base)          // giá gốc
+                .finalPrice(eff)      // ✅ giá sau sale (saleAmount đã clamp >= 0)
+                .onSale(onSale)
+
                 .quantity(item.getQuantity())
                 .colorId(color.getId())
                 .colorName(color.getName())
@@ -164,28 +228,7 @@ public class CartService {
                 .orElseThrow(() -> new RuntimeException("User not found"));
         Cart cart = cartRepository.findByUser(user)
                 .orElseThrow(() -> new RuntimeException("Cart not found"));
-
-        List<CartItem> items = cartItemRepository.findByCart(cart);
-        return items.stream().mapToInt(CartItem::getQuantity).sum();
+        return cartItemRepository.findByCart(cart)
+                .stream().mapToInt(CartItem::getQuantity).sum();
     }
-
-    public void updateItemVariant(Long userId, Long itemId, Long colorId, Long sizeId) {
-
-        CartItem item = cartItemRepository.findByIdAndCart_User_Id(itemId, userId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm trong giỏ hàng"));
-
-        Product product = item.getVariant().getProduct();
-
-        ProductVariant newVariant = productVariantRepository
-                .findByProductIdAndColorIdAndSizeId(
-                        item.getVariant().getProduct().getId(), colorId, sizeId
-                )
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy biến thể phù hợp"));
-
-        item.setVariant(newVariant);
-
-        cartItemRepository.save(item);
-    }
-
-
 }

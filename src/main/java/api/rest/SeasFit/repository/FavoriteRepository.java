@@ -17,4 +17,6 @@ public interface FavoriteRepository extends JpaRepository<Favorite, Long> {
     void deleteByUserIdAndProductId(Long userId, Long productId);
 
     void deleteByProductId(Long productId);
+
+    Long countByUserId(Long id);
 }

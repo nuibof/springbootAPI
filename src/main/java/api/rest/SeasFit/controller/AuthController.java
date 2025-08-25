@@ -16,7 +16,9 @@ import api.rest.SeasFit.entity.User;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -32,38 +34,72 @@ public class AuthController {
         this.passwordEncoder = passwordEncoder;
     }
 
+
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody AuthRequest request, HttpServletResponse response) {
-        System.out.println("Login attempt: Username=" + request.getUserName() + ", Password=" + request.getPassword());
+        // dùng logger thay vì System.out (khuyên xài @Slf4j)
+        // log.info("Login attempt: {}", request.getUserName());
 
-        User user = userService.findByUserName(request.getUserName());
+        final String username = request.getUserName();
+        final String rawPassword = request.getPassword();
 
+        if (username == null || username.isBlank() || rawPassword == null || rawPassword.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", "Thiếu username/password"));
+        }
+
+        User user = userService.findByUserName(username);
         if (user == null) {
-            System.out.println("User not found: " + request.getUserName());
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Tên đăng nhập không tồn tại.");
+            // log.warn("User not found: {}", username);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Tên đăng nhập không tồn tại."));
         }
 
-        System.out.println("Expected: [" + user.getPassword() + "] Received: [" + request.getPassword() + "]");
-
-        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            System.out.println("Incorrect password for user: " + request.getUserName());
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Mật khẩu không đúng.");
+        // sai mật khẩu
+        if (!passwordEncoder.matches(rawPassword, user.getPassword())) {
+            // log.warn("Bad password for: {}", username);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Mật khẩu không đúng."));
         }
 
+        // khoá tài khoản
+        String status = user.getStatus() == null ? "INACTIVE" : user.getStatus().trim().toUpperCase();
+        if (!"ACTIVE".equals(status)) {
+            // log.warn("User locked: {}", username);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Tài khoản bị đình chỉ!"));
+        }
+
+        // ok -> cấp token
         String token = jwtUtil.generateToken(user.getUserName(), user.getRole());
-        System.out.println("Login successful for user: " + user.getFullName());
 
+        // set httpOnly cookie để FE dùng credentials: 'include'
         ResponseCookie jwtCookie = ResponseCookie.from("jwtToken", token)
                 .httpOnly(true)
-                .secure(true)
-                .sameSite("None")
+                .secure(true)          // bật HTTPS; dev http có thể tắt (không khuyến nghị)
+                .sameSite("None")      // để chia sẻ cookie cross-site
                 .path("/")
                 .maxAge(Duration.ofDays(1))
                 .build();
         response.setHeader(HttpHeaders.SET_COOKIE, jwtCookie.toString());
 
-        return ResponseEntity.ok(new AuthResponse(token));
+        // có thể trả thêm info user nếu cần FE hiển thị
+        Map<String, Object> userMap = new LinkedHashMap<>();
+        userMap.put("id", user.getId());
+        userMap.put("userName", user.getUserName());
+        userMap.put("fullName", user.getFullName());   // có thể null -> OK
+        userMap.put("role", user.getRole());
+        userMap.put("status", user.getStatus());
+        userMap.put("email", user.getEmail());
+        userMap.put("phone", user.getPhone());
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("token", token);
+        body.put("user", userMap);
+
+        return ResponseEntity.ok(body);
     }
+
 
     @PostMapping("/logout")
     public ResponseEntity<?> logout(HttpServletResponse response) {
@@ -92,6 +128,7 @@ public class AuthController {
                 ", Phone=" + user.getPhone());
         String encodedPassword = passwordEncoder.encode(user.getPassword());
         user.setPassword(encodedPassword);
+        user.setStatus("ACTIVE");
         user.setCreatedAt(LocalDateTime.now());
         user.setRole("ROLE_USER");
         userService.save(user);

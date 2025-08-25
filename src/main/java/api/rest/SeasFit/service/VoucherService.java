@@ -43,6 +43,8 @@ public class VoucherService {
             throw new RuntimeException("Loại giảm giá không hợp lệ");
         } else if (req.getCode() == null || req.getCode().isEmpty()) {
             throw new RuntimeException("Mã giảm giá không được để trống");
+        } else if(req.getMaxDiscountValue() != null && req.getMaxDiscountValue() < 0) {
+            throw new RuntimeException("Giá trị giảm giá tối đa không thể âm");
         }
 
         Voucher voucher = Voucher.builder()
@@ -52,6 +54,7 @@ public class VoucherService {
                 .description(req.getDescription())
                 .minOrderAmount(BigDecimal.valueOf(req.getMinOrderAmount()))
                 .quantity(req.getQuantity())
+                .maxDiscountValue(BigDecimal.valueOf(req.getMaxDiscountValue()))
                 .startDate(LocalDate.parse(req.getStartDate()))
                 .endDate(LocalDate.parse(req.getEndDate()))
                 .isActive(req.getIsActive() != null && req.getIsActive())
@@ -73,14 +76,14 @@ public class VoucherService {
             throw new RuntimeException("Số lượng mã giảm giá phải lớn hơn 0");
         } else if (LocalDate.parse(request.getStartDate()).isAfter(LocalDate.parse(request.getEndDate()))) {
             throw new RuntimeException("Ngày bắt đầu không thể sau ngày kết thúc");
-        } else if (LocalDate.parse(request.getStartDate()).isBefore(LocalDate.now())) {
-            throw new RuntimeException("Ngày bắt đầu không thể trước ngày hiện tại");
         } else if (LocalDate.parse(request.getEndDate()).isBefore(LocalDate.now())) {
             throw new RuntimeException("Ngày kết thúc không thể trước ngày hiện tại");
         } else if (request.getDiscountType() == null || (!request.getDiscountType().equals("fixed") && !request.getDiscountType().equals("percent"))) {
             throw new RuntimeException("Loại giảm giá không hợp lệ");
         } else if (request.getCode() == null || request.getCode().isEmpty()) {
             throw new RuntimeException("Mã giảm giá không được để trống");
+        } else if(request.getMaxDiscountValue() != null && request.getMaxDiscountValue() < 0) {
+            throw new RuntimeException("Giá trị giảm giá tối đa không thể âm");
         }
 
         try{
@@ -90,6 +93,7 @@ public class VoucherService {
             voucher.setDescription(request.getDescription());
             voucher.setMinOrderAmount(BigDecimal.valueOf(request.getMinOrderAmount()));
             voucher.setQuantity(request.getQuantity());
+            voucher.setMaxDiscountValue(BigDecimal.valueOf(request.getMaxDiscountValue()));
             voucher.setStartDate(LocalDate.parse(request.getStartDate()));
             voucher.setEndDate(LocalDate.parse(request.getEndDate()));
             voucher.setIsActive(request.getIsActive() != null && request.getIsActive());

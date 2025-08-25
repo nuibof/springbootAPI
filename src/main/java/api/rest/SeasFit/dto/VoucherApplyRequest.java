@@ -8,4 +8,5 @@ import java.math.BigDecimal;
 public class VoucherApplyRequest {
     private String code;
     private BigDecimal totalAmount;
+    private Long orderId;
 }

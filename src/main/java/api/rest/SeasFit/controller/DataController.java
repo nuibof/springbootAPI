@@ -12,9 +12,11 @@ import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -77,19 +79,28 @@ public class DataController {
         return ResponseEntity.ok(result);
     }
 
-
-
     @PostMapping("/products/full")
+    @Transactional
     public ResponseEntity<?> createFullProduct(@RequestBody ProductFullRequest request) {
-        Product product = new Product();
-        if(request.getGender()==null || request.getGender().equals("")){
-            product.setGender(0);
+
+        // ---- Validate tối thiểu ----
+        if (request.getCategoryId() == null) {
+            return ResponseEntity.badRequest().body("categoryId is required");
         }
-        product.setGender(request.getGender());
+        if (!StringUtils.hasText(request.getName())) {
+            return ResponseEntity.badRequest().body("name is required");
+        }
+
+        // ---- Product ----
+        Product product = new Product();
+        // set default gender nếu null/rỗng, KHÔNG ghi đè lại sau đó
+        Integer gender = request.getGender();
+        product.setGender(gender != null ? gender : 0);
+
         product.setName(request.getName());
         product.setDescription(request.getDescription());
         product.setImageUrl(request.getImageUrl());
-        product.setStatus(request.getStatus());
+        product.setStatus(StringUtils.hasText(request.getStatus()) ? request.getStatus() : "ACTIVE");
 
         Category category = categoryRepository.findById(Long.valueOf(request.getCategoryId()))
                 .orElseThrow(() -> new RuntimeException("Category not found"));
@@ -97,24 +108,58 @@ public class DataController {
 
         product = productRepository.save(product);
 
-        for (ProductFullRequest.ColorRequest colorReq : request.getColors()) {
-            Optional<Color> existingColor = colorRepository.findByNameAndHexCode(colorReq.getName(), colorReq.getHex());
+        // ---- Colors (an toàn null) ----
+        List<ProductFullRequest.ColorRequest> colors = request.getColors() != null
+                ? request.getColors() : Collections.emptyList();
 
+        for (ProductFullRequest.ColorRequest colorReq : colors) {
+            // Chuẩn hoá input
+            String colorName = StringUtils.trimWhitespace(colorReq.getName());
+            String hex       = StringUtils.trimWhitespace(colorReq.getHex());
+            String imageUrl  = StringUtils.trimWhitespace(colorReq.getImage());
+
+            // Bỏ qua color thiếu dữ liệu cơ bản
+            if (!StringUtils.hasText(colorName) && !StringUtils.hasText(hex)) {
+                continue;
+            }
+
+            // Color
+            Optional<Color> existingColor = colorRepository.findByNameAndHexCode(colorName, hex);
             Color color = existingColor.orElseGet(() -> {
-                Color newColor = new Color();
-                newColor.setName(colorReq.getName());
-                newColor.setHexCode(colorReq.getHex());
-                return colorRepository.save(newColor);
+                Color c = new Color();
+                c.setName(colorName);
+                c.setHexCode(hex);
+                return colorRepository.save(c);
             });
 
-            ProductImage image = new ProductImage();
-            image.setProduct(product);
-            image.setColor(color);
-            image.setImageUrl(colorReq.getImage());
-            image.setCreatedAt(LocalDateTime.now());
-            productImageRepository.save(image);
+            // Image (nếu có)
+            if (StringUtils.hasText(imageUrl)) {
+                ProductImage image = new ProductImage();
+                image.setProduct(product);
+                image.setColor(color);
+                image.setImageUrl(imageUrl);
+                image.setCreatedAt(LocalDateTime.now());
+                productImageRepository.save(image);
+            }
 
-            for (String sizeStr : colorReq.getSizes()) {
+            // Giá mặc định = 0 nếu null/âm
+            BigDecimal price = colorReq.getPrice() != null
+                    ? colorReq.getPrice()
+                    : BigDecimal.ZERO;
+            if (price.signum() < 0) price = BigDecimal.ZERO;
+
+            // Sizes (lọc null/rỗng, trim, unique)
+            List<String> sizes = colorReq.getSizes() != null ? colorReq.getSizes() : Collections.emptyList();
+            LinkedHashSet<String> cleanedSizes = sizes.stream()
+                    .map(s -> StringUtils.trimWhitespace(s))
+                    .filter(StringUtils::hasText)   // <--- chặn NULL/rỗng ở đây
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+
+            // Nếu không có size hợp lệ thì bỏ qua tạo variant
+            if (cleanedSizes.isEmpty()) continue;
+
+            for (String sizeStr : cleanedSizes) {
+                // Size entity
                 Optional<Size> existingSize = sizeRepository.findByLabel(sizeStr);
                 Size size = existingSize.orElseGet(() -> {
                     Size newSize = new Size();
@@ -122,20 +167,21 @@ public class DataController {
                     return sizeRepository.save(newSize);
                 });
 
+                // Variant
                 ProductVariant variant = new ProductVariant();
                 variant.setProduct(product);
                 variant.setColor(color);
                 variant.setSize(size);
                 variant.setQuantity(0);
-                variant.setPrice(colorReq.getPrice());
+                variant.setPrice(price);
                 variant.setCreatedAt(LocalDateTime.now());
                 productVariantRepository.save(variant);
             }
-
         }
 
         return ResponseEntity.ok("Product created successfully");
     }
+
 
     @PutMapping("/products/active/{id}")
     public ResponseEntity<?> toggleProductActive(@PathVariable Long id) {
@@ -176,6 +222,24 @@ public class DataController {
             existingBanner.setBigText(updatedBanner.getBigText());
             existingBanner.setSubText(updatedBanner.getSubText());
             existingBanner.setButtonText(updatedBanner.getButtonText());
+            existingBanner.setButtonUrl(updatedBanner.getButtonUrl());
+
+            existingBanner.setSubImageUrl1(updatedBanner.getSubImageUrl1());
+            existingBanner.setSubImageUrl2(updatedBanner.getSubImageUrl2());
+            existingBanner.setSubImageUrl3(updatedBanner.getSubImageUrl3());
+
+            existingBanner.setSubText1(updatedBanner.getSubText1());
+            existingBanner.setSubText2(updatedBanner.getSubText2());
+            existingBanner.setSubText3(updatedBanner.getSubText3());
+
+            existingBanner.setSubButtonText1(updatedBanner.getSubButtonText1());
+            existingBanner.setSubButtonText2(updatedBanner.getSubButtonText2());
+            existingBanner.setSubButtonText3(updatedBanner.getSubButtonText3());
+
+            existingBanner.setSubButtonUrl1(updatedBanner.getSubButtonUrl1());
+            existingBanner.setSubButtonUrl2(updatedBanner.getSubButtonUrl2());
+            existingBanner.setSubButtonUrl3(updatedBanner.getSubButtonUrl3());
+
             System.out.println(existingBanner);
             bannerRepository.save(existingBanner);
 

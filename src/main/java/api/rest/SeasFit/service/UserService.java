@@ -4,10 +4,8 @@ import api.rest.SeasFit.entity.User;
 import api.rest.SeasFit.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
-import java.awt.print.Pageable;
 import java.util.List;
 
 @Service
@@ -62,7 +60,7 @@ public class UserService {
         return null;
     }
 
-    public List<User> getLatestUsers(int limit) {
+    public List<User> get5LatestUsers() {
         return userRepo.findTop5ByOrderByCreatedAtDesc();
     }
 

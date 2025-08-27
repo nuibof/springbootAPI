@@ -283,6 +283,7 @@ public class OrderService {
                 if (r.getQuantity() == null && r.getPrice() == null && r.getProductId() == null && r.getProductName() == null) {
                     continue;
                 }
+                String imageUrl = r.getImageUrl();
                 String productName = r.getProductName() != null ? r.getProductName() : "[biến thể đã xoá]";
                 String colorName   = r.getColorName()   != null ? r.getColorName()   : "-";
                 String sizeLabel   = r.getSizeLabel()   != null ? r.getSizeLabel()   : "-";
@@ -294,6 +295,7 @@ public class OrderService {
                 i.put("size",        sizeLabel);
                 i.put("quantity",    r.getQuantity() != null ? r.getQuantity() : 0);
                 i.put("price",       r.getPrice());
+                i.put("imageUrl",    r.getImageUrl());
                 items.add(i);
             }
 

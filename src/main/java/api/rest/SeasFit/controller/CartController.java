@@ -37,11 +37,6 @@ public class CartController {
     private ResponseEntity<?> unauthorized(String msg) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(msg);
     }
-
-    private ResponseEntity<?> notFound(String msg) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(msg);
-    }
-
     private User getAuthenticatedUser(@RequestHeader(value = "Authorization", required = false) String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Thiếu token xác thực");
@@ -74,13 +69,7 @@ public class CartController {
     }
 
     @PostMapping("/add")
-    public ResponseEntity<?> addToCart(
-            @RequestHeader(value = "Authorization", required = false) String authHeader,
-            @RequestBody AddToCartDTO dto
-    ) {
-
-
-
+    public ResponseEntity<?> addToCart(@RequestHeader(value = "Authorization", required = false) String authHeader, @RequestBody AddToCartDTO dto) {
         try {
             System.out.println(authHeader);
             if(authHeader.equals("Bearer null")) {
@@ -123,10 +112,7 @@ public class CartController {
     }
 
     @DeleteMapping("/item/{id}")
-    public ResponseEntity<?> removeItem(
-            @PathVariable Long id,
-            @RequestHeader(value = "Authorization", required = false) String authHeader
-    ) {
+    public ResponseEntity<?> removeItem(@PathVariable Long id, @RequestHeader(value = "Authorization", required = false) String authHeader) {
         try {
             User user = getAuthenticatedUser(authHeader);
             return cartService.removeItem(user.getId(), id);
@@ -136,8 +122,7 @@ public class CartController {
     }
 
     @PostMapping("/items/delete")
-    public ResponseEntity<?> deleteSelectedItems(@RequestBody List<Long> ids,
-                                                 @RequestHeader("Authorization") String authHeader) {
+    public ResponseEntity<?> deleteSelectedItems(@RequestBody List<Long> ids, @RequestHeader("Authorization") String authHeader) {
         if (ids == null || ids.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Danh sách sản phẩm cần xoá không được rỗng"));
         }
@@ -148,19 +133,9 @@ public class CartController {
         return ResponseEntity.ok(Map.of("message", "Đã xoá các sản phẩm được chọn"));
     }
 
-
-
-
-
-
     @PutMapping("/item/{id}")
-    public ResponseEntity<?> updateItem(
-            @PathVariable Long id,
-            @RequestParam(required = false) Long colorId,
-            @RequestParam(required = false) Long sizeId,
-            @RequestParam(required = false) Integer quantity,
-            @RequestHeader(value = "Authorization", required = false) String authHeader
-    ) {
+    public ResponseEntity<?> updateItem(@PathVariable Long id, @RequestParam(required = false) Long colorId, @RequestParam(required = false) Long sizeId,
+                                        @RequestParam(required = false) Integer quantity, @RequestHeader(value = "Authorization", required = false) String authHeader) {
         try {
             User user = getAuthenticatedUser(authHeader);
 

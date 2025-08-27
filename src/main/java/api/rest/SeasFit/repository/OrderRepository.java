@@ -3,6 +3,7 @@ package api.rest.SeasFit.repository;
 import api.rest.SeasFit.entity.Order;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -15,8 +16,10 @@ import java.util.Optional;
 
 public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecificationExecutor<Order> {
     Optional<Order> findByIdAndUserId(Long id, Long id1);
-    List<Order> findAllByUserId(Long id);
 
+    List<Order> findAllByUserId(Long id);
+    @EntityGraph(attributePaths = { "items" })   // <-- tránh Lazy khi serialize
+    Optional<Order> findWithItemsById(Long id);
     // JPQL cũ: có thể bị @Where chặn soft-delete
     @Query("""
        select distinct o from Order o
@@ -47,7 +50,7 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
         BigDecimal getShippingFee();
         String getCancelReason();
         Instant getCreatedAt();
-
+        String getImageUrl();
         Integer getQuantity();
         BigDecimal getPrice();
 
@@ -74,6 +77,7 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
       oi.price             AS price,
 
       p.name               AS productName,
+          p.image_url        AS ImageUrl,
       c.name               AS colorName,
       s.label              AS sizeLabel
     FROM [order] o
@@ -106,6 +110,7 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
           oi.price            AS price,
 
           p.name              AS productName,
+              p.image_url       AS ImageUrl,
           c.name              AS colorName,
           s.label             AS sizeLabel
         FROM [order] o
@@ -140,7 +145,7 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
         String getProductName();
         String getColorName();
         String getSizeLabel();
-
+        String getImageUrl();
         // address (có thể null)
         String getAddrFullName();
         String getAddrPhone();
@@ -168,6 +173,7 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
 
       p.id                 AS productId,
       p.name               AS productName,
+      p.image_url         AS ImageUrl,
       c.name               AS colorName,
       s.label              AS sizeLabel,
 
@@ -182,7 +188,7 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
     FROM [order] o
     LEFT JOIN order_item oi        ON oi.order_id = o.id
     LEFT JOIN product_variant pv   ON pv.id = oi.variant_id   -- BYPASS @Where
-    LEFT JOIN product p            ON p.id = pv.product_id
+    LEFT JOIN product p            ON p.id = pv.product_id 
     LEFT JOIN [color] c            ON c.id = pv.color_id
     LEFT JOIN [size] s             ON s.id = pv.size_id
     LEFT JOIN order_address oa     ON oa.order_id = o.id
@@ -209,6 +215,7 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
     oi.price        AS price,
 
     p.name          AS productName,
+    p.image_url    AS ImageUrl,
     c.name          AS colorName,
     s.label         AS sizeLabel
   FROM [order] o

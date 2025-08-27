@@ -21,56 +21,93 @@ import java.util.*;
 @Service
 public class MomoPaymentService {
 
-    String partnerCode = "MOMO";
-    String accessKey = "F8BBA842ECF85";
-    String secretKey = "K951B6PE1waDMi640xX08PD3vg6EkVlz";
-    private final String endpoint = "https://test-payment.momo.vn/v2/gateway/api/create";
-    private final String ipnUrl = "http://192.168.100.239:8080/api/payment/momo/ipn"; // sửa theo domain backend bạn
-    private final String redirectUrl = "http://192.168.100.239:5173/checkout-success"; // sửa theo frontend bạn
+    private final String partnerCode = "MOMO";
+    private final String accessKey   = "F8BBA842ECF85";
+    private final String secretKey   = "K951B6PE1waDMi640xX08PD3vg6EkVlz";
+    private final String endpoint    = "https://test-payment.momo.vn/v2/gateway/api/create";
 
-    @Autowired
-    private OrderRepository orderRepository;
+    @Value("${backend.url}")
+    private String backendUrl;   // ví dụ: https://api.seasfit.vn
+    @Value("${frontend.url}")
+    private String frontendUrl;  // ví dụ: https://seasfit.vn
 
-    @Autowired
-    private VoucherRepository voucherRepository;
+    @Autowired private OrderRepository orderRepository;
+    @Autowired private VoucherRepository voucherRepository;
 
     public MomoResponse createMomoPayment(String orderIdStr, long totalAmount, int shippingFee) {
-        String requestId = UUID.randomUUID().toString();
+        // --- Build URL SAU KHI @Value đã inject ---
+        final String ipnUrl       = backendUrl + "/api/payment/momo/ipn";
+        final String redirectBase = frontendUrl + "/account/orders";
+        final String returnUrlFull = redirectBase + "?orderId=" + orderIdStr;
+
+        String requestId   = UUID.randomUUID().toString();
         String requestType = "captureWallet";
         String momoOrderId = orderIdStr + "-" + System.currentTimeMillis();
-        String orderInfo = "Thanh toán đơn hàng " + orderIdStr;
-        String returnUrlFull = redirectUrl + "?orderId=" + orderIdStr;
+        String orderInfo   = "Thanh toán đơn hàng " + orderIdStr;
 
         long orderId = Long.parseLong(orderIdStr);
-        Optional<Order> orderOpt = orderRepository.findById(orderId);
-        if (orderOpt.isEmpty()) return null;
+        Order order = orderRepository.findById(orderId).orElse(null);
+        if (order == null) return null;
 
-        Order order = orderOpt.get();
+        // ======= TÍNH GIẢM GIÁ =======
+        BigDecimal total     = BigDecimal.valueOf(totalAmount);
+        BigDecimal discount  = BigDecimal.ZERO;
 
-        BigDecimal discount = BigDecimal.ZERO;
+        // Ưu tiên dùng field code string lưu trên order; nếu không thì lấy từ entity Voucher
+        String voucherCode = order.getVoucherCode();
+        if ((voucherCode == null || voucherCode.isBlank()) && order.getVoucher() != null) {
+            voucherCode = order.getVoucher().getCode(); // <-- dùng đúng code
+        }
 
-        if (order.getVoucher() != null) {
-            Optional<Voucher> optional = voucherRepository.findByCode(String.valueOf(order.getVoucher()));
-
-            if (optional.isPresent()) {
-                Voucher voucher = optional.get();
-                if (voucher.getDiscountType().equals("fixed")) {
-                    discount = voucher.getDiscountValue();
-                } else if (voucher.getDiscountType().equals("percent")) {
-                    discount = BigDecimal.valueOf(totalAmount)
-                            .multiply(voucher.getDiscountValue().divide(BigDecimal.valueOf(100)));
+        if (voucherCode != null && !voucherCode.isBlank()) {
+            voucherRepository.findByCode(voucherCode).ifPresent(v -> {
+                BigDecimal d = BigDecimal.ZERO;
+                if ("fixed".equalsIgnoreCase(v.getDiscountType())) {
+                    d = v.getDiscountValue();
+                } else if ("percent".equalsIgnoreCase(v.getDiscountType())) {
+                    // percent value: ví dụ 15 → 15%
+                    d = total.multiply(
+                            v.getDiscountValue()
+                                    .divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP)
+                    );
                 }
+                // cap discount không vượt tổng
+                if (d.compareTo(total) > 0) d = total;
+                // gán ra ngoài
+                // (trick: dùng wrapper hoặc AtomicReference, hoặc trả về qua biến final[0])
+                // Ở đây viết trực tiếp cho gọn
+            });
+            // Nếu muốn discount “ra ngoài” block ifPresent, hãy refactor dùng biến AtomicReference<BigDecimal>
+        }
+
+        // Nếu dùng ifPresent như trên, refactor lại:
+        if (voucherCode != null && !voucherCode.isBlank()) {
+            var optional = voucherRepository.findByCode(voucherCode);
+            if (optional.isPresent()) {
+                var v = optional.get();
+                if ("fixed".equalsIgnoreCase(v.getDiscountType())) {
+                    discount = v.getDiscountValue();
+                } else if ("percent".equalsIgnoreCase(v.getDiscountType())) {
+                    discount = total.multiply(
+                            v.getDiscountValue()
+                                    .divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP)
+                    );
+                }
+                if (discount.compareTo(total) > 0) discount = total;
             }
         }
 
+        BigDecimal payable = total.subtract(discount).add(BigDecimal.valueOf(shippingFee));
+        if (payable.signum() < 0) payable = BigDecimal.ZERO;
 
-        long discountValue = discount.longValue();
-        long totalWithShipping = totalAmount - discountValue + shippingFee;
+        String amountStr = payable.toBigInteger().toString();
 
-        String amountStr = String.valueOf(totalWithShipping);
-        String extraData = orderIdStr + "|fee:" + shippingFee + "|discount:" + discountValue;
+        // extraData: nên base64 để tránh ký tự lạ
+        String rawExtra = orderIdStr + "|fee:" + shippingFee + "|discount:" + discount.toPlainString();
+        String extraData = Base64.getEncoder().encodeToString(rawExtra.getBytes(StandardCharsets.UTF_8));
 
         try {
+            // ---- RAW SIGNATURE (đúng thứ tự theo MoMo docs) ----
             String rawSignature = "accessKey=" + accessKey
                     + "&amount=" + amountStr
                     + "&extraData=" + extraData
@@ -84,49 +121,43 @@ public class MomoPaymentService {
 
             String signature = hmacSHA256(rawSignature, secretKey);
 
-            Map<String, String> rawData = new LinkedHashMap<>();
-            rawData.put("accessKey", accessKey);
-            rawData.put("amount", amountStr);
-            rawData.put("extraData", extraData);
-            rawData.put("ipnUrl", ipnUrl);
-            rawData.put("orderId", momoOrderId);
-            rawData.put("orderInfo", orderInfo);
-            rawData.put("partnerCode", partnerCode);
-            rawData.put("redirectUrl", returnUrlFull);
-            rawData.put("requestId", requestId);
-            rawData.put("requestType", requestType);
-            rawData.put("signature", signature);
+            Map<String, String> body = new LinkedHashMap<>();
+            body.put("partnerCode", partnerCode);
+            body.put("accessKey", accessKey);
+            body.put("requestId", requestId);
+            body.put("amount", amountStr);
+            body.put("orderId", momoOrderId);
+            body.put("orderInfo", orderInfo);
+            body.put("redirectUrl", returnUrlFull);
+            body.put("ipnUrl", ipnUrl);
+            body.put("extraData", extraData);
+            body.put("requestType", requestType);
+            body.put("signature", signature);
 
             RestTemplate restTemplate = new RestTemplate();
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<Map<String, String>> request = new HttpEntity<>(rawData, headers);
+            HttpEntity<Map<String, String>> req = new HttpEntity<>(body, headers);
 
-            ResponseEntity<String> response = restTemplate.postForEntity(endpoint, request, String.class);
+            ResponseEntity<String> response = restTemplate.postForEntity(endpoint, req, String.class);
             System.out.println("MoMo RAW Response: " + response.getBody());
 
-            ObjectMapper mapper = new ObjectMapper();
-            return mapper.readValue(response.getBody(), MomoResponse.class);
+            return new ObjectMapper().readValue(response.getBody(), MomoResponse.class);
+
         } catch (Exception e) {
+            e.printStackTrace();
             System.out.println("Lỗi khi tạo giao dịch MoMo: " + e.getMessage());
             return null;
         }
     }
-
 
     public String hmacSHA256(String data, String key) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
         SecretKeySpec secretKey = new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
         mac.init(secretKey);
         byte[] hash = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
-        return bytesToHex(hash);
-    }
-
-    private String bytesToHex(byte[] bytes) {
         StringBuilder sb = new StringBuilder();
-        for (byte b : bytes) {
-            sb.append(String.format("%02x", b));
-        }
+        for (byte b : hash) sb.append(String.format("%02x", b));
         return sb.toString();
     }
 }

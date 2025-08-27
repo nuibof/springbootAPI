@@ -49,4 +49,23 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
         WHERE oi.order_id = :orderId
         """, nativeQuery = true)
     long countItemsByOrderIdNative(@Param("orderId") Long orderId);
+
+    @Query(value = """
+      SELECT CASE WHEN EXISTS (
+        SELECT 1
+        FROM [order] o
+        JOIN order_item oi      ON oi.order_id = o.id
+        JOIN product_variant pv  ON pv.id = oi.variant_id
+        JOIN product p          ON p.id = pv.product_id
+        WHERE o.user_id = :userId
+          AND p.id = :productId
+          AND UPPER(o.status) = 'DELIVERED'
+      ) THEN 1 ELSE 0 END
+      """, nativeQuery = true)
+    int hasDeliveredPurchaseNative(@Param("userId") Long userId,
+                                   @Param("productId") Long productId);
+
+    default boolean hasDeliveredPurchase(Long userId, Long productId) {
+        return hasDeliveredPurchaseNative(userId, productId) == 1;
+    }
 }

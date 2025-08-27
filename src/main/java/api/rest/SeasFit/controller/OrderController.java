@@ -8,10 +8,12 @@ import api.rest.SeasFit.entity.User;
 import api.rest.SeasFit.repository.OrderRepository;
 import api.rest.SeasFit.repository.VoucherRepository;
 import api.rest.SeasFit.security.JwtUtil;
+import api.rest.SeasFit.service.OrderMailService;
 import api.rest.SeasFit.service.OrderService;
 import api.rest.SeasFit.service.UserService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,7 +23,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Map;
 import java.util.Optional;
-
+@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/orders")
@@ -32,6 +34,7 @@ public class OrderController {
     private final UserService userService;
     private final OrderRepository orderRepository;
     private final VoucherRepository voucherRepository;
+    private final OrderMailService  orderMailService;
 
     // ===== Helpers tiền tệ =====
     private BigDecimal nvl(BigDecimal x) { return x != null ? x : BigDecimal.ZERO; }
@@ -72,6 +75,13 @@ public class OrderController {
         User user = getAuthenticatedUser(authHeader);
         Order order = orderService.createOrder(user.getId(), request);
 
+        // Gửi mail confirm đơn hàng
+        try {
+            orderMailService.sendOrderConfirmation(user, order);
+        } catch (Exception e) {
+            log.error("Gửi mail đơn hàng thất bại", e); // in full stack
+        }
+
         return ResponseEntity.ok(Map.of(
                 "orderId",         order.getId(),
                 "status",          order.getStatus(),
@@ -81,6 +91,7 @@ public class OrderController {
                 "payable",         payableOf(order)
         ));
     }
+
 
     @GetMapping("/{id}")
     public ResponseEntity<?> getOrderById(@PathVariable("id") Long id,

@@ -49,23 +49,19 @@ public class AddressController {
     }
 
     @PostMapping
-    public AddressResponse create(@RequestHeader("Authorization") String authHeader,
-                                  @RequestBody AddressRequest request) {
+    public AddressResponse create(@RequestHeader("Authorization") String authHeader, @RequestBody AddressRequest request) {
         User user = getAuthenticatedUser(authHeader);
         return addressService.create(user.getId(), request);
     }
 
     @PutMapping("/{id}")
-    public AddressResponse update(@RequestHeader("Authorization") String authHeader,
-                                  @PathVariable Long id,
-                                  @RequestBody AddressRequest request) {
+    public AddressResponse update(@RequestHeader("Authorization") String authHeader, @PathVariable Long id, @RequestBody AddressRequest request) {
         User user = getAuthenticatedUser(authHeader);
         return addressService.update(user.getId(), id, request);
     }
 
     @DeleteMapping("/{id}")
-    public void delete(@RequestHeader("Authorization") String authHeader,
-                       @PathVariable Long id) {
+    public void delete(@RequestHeader("Authorization") String authHeader, @PathVariable Long id) {
         User user = getAuthenticatedUser(authHeader);
         addressService.delete(user.getId(), id);
     }

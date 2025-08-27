@@ -1,9 +1,12 @@
 package api.rest.SeasFit.controller;
 
+import api.rest.SeasFit.dto.ForgotRequest;
+import api.rest.SeasFit.dto.NewPasswordRequest;
+import api.rest.SeasFit.dto.VerifyReq;
+import api.rest.SeasFit.service.PasswordOtpService;
 import api.rest.SeasFit.service.UserService;
 import jakarta.servlet.http.HttpServletResponse;
 import api.rest.SeasFit.security.AuthRequest;
-import api.rest.SeasFit.security.AuthResponse;
 import api.rest.SeasFit.security.JwtUtil;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -27,11 +30,13 @@ public class AuthController {
     private final UserService userService;
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
+    private final PasswordOtpService passwordSvc;
 
-    public AuthController(UserService userDAO, JwtUtil jwtUtil, PasswordEncoder passwordEncoder) {
+    public AuthController(UserService userDAO, JwtUtil jwtUtil, PasswordEncoder passwordEncoder, PasswordOtpService passwordSvc) {
         this.userService = userDAO;
         this.jwtUtil = jwtUtil;
         this.passwordEncoder = passwordEncoder;
+        this.passwordSvc = passwordSvc;
     }
 
 
@@ -173,5 +178,22 @@ public class AuthController {
 
         return ResponseEntity.ok(data);
     }
+    @PostMapping("/forgot")
+    public ResponseEntity<?> forgot(@RequestBody ForgotRequest req) {
+        passwordSvc.begin(req.getEmail());
+        return ResponseEntity.ok().build();
+    }
 
+    @PostMapping("/verify")
+    public ResponseEntity<?> verify(@RequestBody VerifyReq req) {
+        passwordSvc.check(req.getEmail(), req.getOtp());
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/reset")
+    public ResponseEntity<?> reset(@RequestBody NewPasswordRequest req) {
+        passwordSvc.updatePassword(req.getEmail(), req.getOtp(), req.getNewPassword());
+        System.out.println(req.getEmail()+req.getOtp()+req.getNewPassword());
+        return ResponseEntity.ok().build();
+    }
 }

@@ -41,4 +41,10 @@ public class VoucherController {
         voucherService.deleteVoucher(code);
         return ResponseEntity.noContent().build();
     }
+
+    @GetMapping("vouchers/count")
+    public ResponseEntity<Long> countVouchers() {
+        Long count = voucherService.countVouchers();
+        return ResponseEntity.ok(count);
+    }
 }

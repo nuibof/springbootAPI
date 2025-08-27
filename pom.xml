@@ -19,12 +19,11 @@
 
     <properties>
         <java.version>17</java.version>
-        <openai.version>3.1.2</openai.version>
         <lombok.version>1.18.32</lombok.version>
     </properties>
 
     <dependencies>
-        <!-- Core -->
+        <!-- Spring Boot core -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>
@@ -41,37 +40,47 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
-
-        <!-- WebFlux (để nguyên nếu ông đang dùng reactive). Không dùng thì có thể gỡ. -->
+        <!-- gửi mail -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webflux</artifactId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.openai</groupId>
+            <artifactId>openai-java</artifactId>
+            <version>3.1.2</version>
         </dependency>
 
-        <!-- OAuth2 client: không cần pin version vì parent đã quản lý -->
+        <!-- (tuỳ chọn) render template OTP HTML -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+        </dependency>
+        <!-- OAuth2 (nếu login Google/Facebook) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-oauth2-client</artifactId>
         </dependency>
 
-        <!-- WebSocket/STOMP -->
+        <!-- WebSocket/STOMP (nếu dùng realtime) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-websocket</artifactId>
         </dependency>
 
-        <!-- OpenAI Java (starter chính chủ) -->
+        <!-- Reactive (CHỈ giữ nếu có dùng WebFlux) -->
+        <!--
         <dependency>
-            <groupId>com.openai</groupId>
-            <artifactId>openai-java-spring-boot-starter</artifactId>
-            <version>${openai.version}</version>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-starter-webflux</artifactId>
         </dependency>
-
+        -->
         <!-- DB / Utils -->
         <dependency>
             <groupId>com.microsoft.sqlserver</groupId>
             <artifactId>mssql-jdbc</artifactId>
             <version>12.8.1.jre11</version>
+            <!-- nếu lên JDK 21 thì cân nhắc đổi sang 12.8.1.jre17 -->
         </dependency>
         <dependency>
             <groupId>commons-codec</groupId>
@@ -103,7 +112,7 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Lombok: chỉ 1 lần, có version + scope provided -->
+        <!-- Lombok (duy nhất 1 cái, scope provided) -->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
@@ -129,12 +138,13 @@
 
     <build>
         <plugins>
-            <!-- Compiler: ép release 17 + fix annotationProcessorPaths cho Lombok -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
                 <configuration>
                     <release>17</release>
+                    <parameters>true</parameters>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
@@ -144,20 +154,7 @@
                     </annotationProcessorPaths>
                 </configuration>
             </plugin>
-
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-                <configuration>
-                    <excludes>
-                        <!-- tránh đóng gói lombok vào jar -->
-                        <exclude>
-                            <groupId>org.projectlombok</groupId>
-                            <artifactId>lombok</artifactId>
-                        </exclude>
-                    </excludes>
-                </configuration>
-            </plugin>
         </plugins>
     </build>
+
 </project>

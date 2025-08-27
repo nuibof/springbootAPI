@@ -33,8 +33,9 @@ public class AdminController {
     private final CategoryService categoryService;
     private final AdminUserService adminUserService;
     private final FavoriteService favoriteService;
+    private final VoucherService voucherService;
 
-    public AdminController(UserService userService, ProductService productService1, OrderService orderService1, RevenueRepository revenueRepo, CategoryService categoryService, AdminUserService adminUserService, FavoriteService favoriteService) {
+    public AdminController(UserService userService, ProductService productService1, OrderService orderService1, RevenueRepository revenueRepo, CategoryService categoryService, AdminUserService adminUserService, FavoriteService favoriteService, VoucherService voucherService) {
         this.userService = userService;
         this.productService = productService1;
         this.orderService = orderService1;
@@ -42,6 +43,7 @@ public class AdminController {
         this.categoryService = categoryService;
         this.adminUserService = adminUserService;
         this.favoriteService = favoriteService;
+        this.voucherService = voucherService;
     }
 
     @GetMapping("/dashboard")
@@ -51,13 +53,13 @@ public class AdminController {
             int totalProducts = productService.getTotalProducts();
             int totalOrders = orderService.getTotalOrders();
             int lowStockProducts = productService.getLowStockProducts();
-
-            List<User> latestUsers = userService.getLatestUsers(5);
+            int totalVouchers = Math.toIntExact(voucherService.countVouchers());
+            List<User> latestUsers = userService.get5LatestUsers();
             if (latestUsers == null) latestUsers = new ArrayList<>();
 
             System.out.println(">>> latestUsers: " + latestUsers.size());
             DashboardDTO dto = new DashboardDTO(
-                    totalUsers, totalProducts, totalOrders, lowStockProducts, latestUsers
+                    totalUsers, totalProducts, totalOrders, lowStockProducts,totalVouchers, latestUsers
             );
             return ResponseEntity.ok(dto);
         } catch (Exception e) {

@@ -1,6 +1,7 @@
 package api.rest.SeasFit.service;
 
 import api.rest.SeasFit.dto.FavoriteAdminDTO;
+import api.rest.SeasFit.dto.FavoriteDTO;
 import api.rest.SeasFit.dto.FavoriteItemDTO;
 import api.rest.SeasFit.entity.Favorite;
 import api.rest.SeasFit.entity.Product;
@@ -8,6 +9,8 @@ import api.rest.SeasFit.entity.ProductVariant;
 import api.rest.SeasFit.repository.FavoriteRepository;
 import api.rest.SeasFit.repository.ProductRepository;
 import api.rest.SeasFit.repository.ProductVariantRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -23,7 +26,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class FavoriteService {
-
+    @PersistenceContext
+    private EntityManager em;
     private final FavoriteRepository favoriteRepository;
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;

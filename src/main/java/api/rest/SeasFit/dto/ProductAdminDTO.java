@@ -22,4 +22,6 @@ public class ProductAdminDTO {
     private int totalQuantity;
     private BigDecimal minPrice;
     private BigDecimal maxPrice;
+    private BigDecimal effectiveMinPrice;
+    private BigDecimal effectiveMaxPrice;
 }

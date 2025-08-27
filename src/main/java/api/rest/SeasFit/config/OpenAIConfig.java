@@ -1,4 +1,3 @@
-// src/main/java/.../config/OpenAIConfig.java
 package api.rest.SeasFit.config;
 
 import com.openai.client.OpenAIClient;
@@ -10,7 +9,9 @@ import org.springframework.context.annotation.Configuration;
 public class OpenAIConfig {
     @Bean
     public OpenAIClient openAIClient() {
-        // Lấy key từ ENV: OPENAI_API_KEY (hoặc application.yml -> System.setProperty/openai.apiKey)
+        // Lấy OPENAI_API_KEY từ env (System.getenv)
         return OpenAIOkHttpClient.fromEnv();
+        // Hoặc:
+        // return OpenAIOkHttpClient.builder().apiKey(System.getenv("OPENAI_API_KEY")).build();
     }
 }

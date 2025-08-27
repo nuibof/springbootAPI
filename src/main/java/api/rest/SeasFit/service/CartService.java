@@ -26,6 +26,7 @@ public class CartService {
     private final ColorRepository colorRepository;
     private final SizeRepository sizeRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final ProductImageRepository productImageRepository;
 
     /* ======================= Helpers ======================= */
 
@@ -97,16 +98,13 @@ public class CartService {
         }
     }
 
-    /** FE cần finalPrice/onSale => map DTO có tính sale theo saleAmount/saleFrom/saleTo của Variant */
     public List<CartItemDTO> getCartItems(Long userId) {
-        User user = userRepository.findById(userId)
+        var user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
-        Cart cart = getOrCreateCart(user);
+        var cart = getOrCreateCart(user);
 
-        // nếu bị N+1, đổi sang query join-fetch trong repository
-        return cartItemRepository.findByCart(cart).stream()
-                .map(this::toDTO)
-                .toList();
+        return cartItemRepository.findByCartFetchAll(cart)
+                .stream().map(this::toDTO).toList();
     }
 
     @Transactional
@@ -190,39 +188,6 @@ public class CartService {
     }
 
     /* ======================= Mapping ======================= */
-
-    private CartItemDTO toDTO(CartItem item) {
-        ProductVariant variant = item.getVariant();
-        Product product = variant.getProduct();
-        Color color = variant.getColor();
-        Size size = variant.getSize();
-
-        BigDecimal base = nvl(variant.getPrice());
-        BigDecimal eff  = nvl(variant.getEffectivePrice());  // ✅ dùng helper của entity
-        boolean onSale  = variant.isSaleActiveNow() && eff.compareTo(base) < 0;
-
-        // Ảnh: tuỳ schema; đang lấy ảnh product
-        String imageUrl = product.getImageUrl();
-
-        return CartItemDTO.builder()
-                .id(item.getId())
-                .productId(product.getId())
-                .productName(product.getName())
-                .imageUrl(imageUrl)
-
-                .price(base)          // giá gốc
-                .finalPrice(eff)      // ✅ giá sau sale (saleAmount đã clamp >= 0)
-                .onSale(onSale)
-
-                .quantity(item.getQuantity())
-                .colorId(color.getId())
-                .colorName(color.getName())
-                .colorHex(color.getHexCode())
-                .sizeId(size.getId())
-                .sizeLabel(size.getLabel())
-                .build();
-    }
-
     public int getCartItemCount(Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -230,5 +195,60 @@ public class CartService {
                 .orElseThrow(() -> new RuntimeException("Cart not found"));
         return cartItemRepository.findByCart(cart)
                 .stream().mapToInt(CartItem::getQuantity).sum();
+    }
+    private String resolveVariantImage(ProductVariant v) {
+        // 1) ảnh theo màu trong product_image (product_id + color_id)
+        return productImageRepository
+                .findFirstByProduct_IdAndColor_IdOrderByCreatedAtAsc(
+                        v.getProduct().getId(), Long.valueOf(v.getColor().getId())
+                )
+                .map(ProductImage::getImageUrl)
+                // 2) fallback: color.imageUrl
+                .orElseGet(() -> {
+                    String cImg = v.getColor() != null ? v.getColor().getImageUrl() : null;
+                    return (cImg != null && !cImg.isBlank())
+                            ? cImg
+                            // 3) fallback: product.imageUrl
+                            : (v.getProduct() != null ? v.getProduct().getImageUrl() : null);
+                });
+    }
+
+    private CartItemDTO toDTO(CartItem ci) {
+        var v = ci.getVariant();
+        var p = v.getProduct();
+        var c = v.getColor();
+        var s = v.getSize();
+
+        // Giá gốc & final
+        BigDecimal price = v.getPrice() != null ? v.getPrice() : BigDecimal.ZERO;
+        BigDecimal saleAmount = v.getSaleAmount() != null ? v.getSaleAmount() : BigDecimal.ZERO;
+        boolean hasSaleWindow = (v.getSaleFrom() != null && v.getSaleTo() != null);
+        boolean inSaleWindow = !hasSaleWindow
+                || (java.time.LocalDateTime.now().isAfter(v.getSaleFrom())
+                && java.time.LocalDateTime.now().isBefore(v.getSaleTo()));
+        boolean onSale = v.isActive() && saleAmount.signum() > 0 && inSaleWindow;
+
+        BigDecimal finalPrice = onSale ? price.subtract(saleAmount) : price;
+
+        return CartItemDTO.builder()
+                .id(ci.getId())
+                .productId(p.getId())
+                .productName(p.getName())
+                .imageUrl(resolveVariantImage(v))
+
+                .price(price)
+                .finalPrice(finalPrice.max(BigDecimal.ZERO))
+                .onSale(onSale)
+                .saleAmount(onSale ? saleAmount : BigDecimal.ZERO)
+
+                .quantity(ci.getQuantity())
+
+                .colorId(c != null ? c.getId().intValue() : null)   // NOTE: bạn đang dùng Integer
+                .colorName(c != null ? c.getName() : null)
+                .colorHex(c != null ? c.getHexCode() : null)
+
+                .sizeId(s != null ? s.getId().intValue() : null)    // NOTE: bạn đang dùng Integer
+                .sizeLabel(s != null ? s.getLabel() : null)
+                .build();
     }
 }

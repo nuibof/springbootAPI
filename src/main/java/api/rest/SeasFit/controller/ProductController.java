@@ -1,10 +1,8 @@
 package api.rest.SeasFit.controller;
 
-import api.rest.SeasFit.dto.ProductCardDTO;
-import api.rest.SeasFit.dto.ProductDetailDTO;
-import api.rest.SeasFit.dto.ProductListDTO;
-import api.rest.SeasFit.dto.ProductSuggestDTO;
+import api.rest.SeasFit.dto.*;
 import api.rest.SeasFit.entity.Product;
+import api.rest.SeasFit.service.ProductAiService;
 import api.rest.SeasFit.service.ProductService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
@@ -14,14 +12,18 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/products")
 public class ProductController {
 
     private final ProductService productService;
-    public ProductController(ProductService productService) {
+    private final ProductAiService productAiService;
+    public ProductController(ProductService productService, ProductAiService productAiService) {
         this.productService = productService;
+        this.productAiService = productAiService;
     }
 
     // GET /api/products
@@ -35,6 +37,27 @@ public class ProductController {
     public List<ProductCardDTO> getProductsByGender(@PathVariable String gender) {
         return productService.findByGender(gender);
     }
+
+    @GetMapping("/bestsellers")
+    public List<Map<String, Object>> bestsellers(
+            @RequestParam(required = false) Integer days,
+            @RequestParam(required = false, defaultValue = "8") Integer limit
+    ) {
+        var list = productService.getBestsellers(days, limit);
+
+        // ĐỪNG Map.of → dùng LinkedHashMap để type = Map<String,Object> sạch sẽ
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+        for (var b : list) {
+            var m = new java.util.LinkedHashMap<String, Object>();
+            m.put("id", b.getId());
+            m.put("name", b.getName());
+            m.put("totalSold", b.getTotalSold());
+            m.put("url", "/product/" + b.getId());
+            result.add(m);
+        }
+        return result;
+    }
+
 
     // GET /api/products/{id}
     @GetMapping("/{id}")
@@ -73,4 +96,9 @@ public class ProductController {
         int top = Math.min(Math.max(limit, 1), 20);
         return ResponseEntity.ok(productService.suggestByName(q.trim(), top));
     }
+
+//    @PostMapping("/ai/recommend")
+//    public AiSuggestResponse aiRecommend(@RequestBody AiSuggestRequest req) {
+//        return productAiService.recommend(req);
+//    }
 }

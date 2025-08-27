@@ -3,6 +3,8 @@ package api.rest.SeasFit.service;
 import api.rest.SeasFit.dto.*;
 import api.rest.SeasFit.entity.*;
 import api.rest.SeasFit.repository.*;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
@@ -33,7 +35,8 @@ public class ProductService {
     private final InventoryRepository inventoryRepository;
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
-
+    @PersistenceContext
+    private EntityManager em;
     public List<Product> findAll() {
         return productRepository.findAll();
     }
@@ -116,15 +119,24 @@ public class ProductService {
             int size,
             Sort sort
     ) {
-        // 1) Lấy data (join theo color/size nếu có); KHÔNG lọc min/max ở DB
         Page<Product> products = productRepository.findAll((root, query, cb) -> {
 
+            // tránh nhân bản khi join
+            query.distinct(true);
+
+            // fetch variants để tránh N+1 (chỉ với query non-count)
             if (query.getResultType() != Long.class && query.getResultType() != long.class) {
                 root.fetch("variants", JoinType.LEFT);
             }
 
             List<Predicate> predicates = new ArrayList<>();
+            // chỉ show ACTIVE (ẩn DELETE/INACTIVE)
             predicates.add(cb.equal(root.get("status"), "ACTIVE"));
+
+            // ✅ lọc theo categoryId
+            if (categoryId != null) {
+                predicates.add(cb.equal(root.get("category").get("id"), categoryId));
+            }
 
             // join variant để lọc color/size (nếu cần)
             if (colorId != null || sizeId != null) {
@@ -135,6 +147,9 @@ public class ProductService {
                 if (sizeId != null) {
                     predicates.add(cb.equal(vj.get("size").get("id"), sizeId));
                 }
+                // chỉ lấy variant còn hoạt động khi đã buộc join
+                predicates.add(cb.isFalse(vj.get("deleted")));
+                predicates.add(cb.isTrue(vj.get("active")));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));
@@ -142,55 +157,43 @@ public class ProductService {
 
         LocalDateTime now = LocalDateTime.now();
 
-        // 2) Map sang DTO có finalPrice + onSale
+        // Map → DTO (lọc variants hợp lệ trước khi tính giá)
         List<ProductListDTO> dtoList = products.getContent().stream()
-                .map(product -> {
-                    // Tập variant hợp lệ của sản phẩm
-                    List<ProductVariant> vars = product.getVariants();
+                .map(p -> {
+                    List<ProductVariant> vars = p.getVariants().stream()
+                            .filter(v -> v != null && !Boolean.TRUE.equals(v.isDeleted()) && Boolean.TRUE.equals(v.isActive()))
+                            .toList();
 
-                    // min giá gốc theo sản phẩm
                     BigDecimal minOriginal = vars.stream()
                             .map(ProductVariant::getPrice)
                             .filter(Objects::nonNull)
                             .min(Comparator.naturalOrder())
                             .orElse(BigDecimal.ZERO);
 
-                    // min finalPrice theo sản phẩm
                     BigDecimal minFinal = vars.stream()
-                            .map(v -> finalPrice(
-                                    v.getPrice(),
-                                    v.getSaleAmount(),  // <-- field mới trong entity
-                                    v.getSaleFrom(),
-                                    v.getSaleTo(),
-                                    now))
+                            .map(v -> finalPrice(v.getPrice(), v.getSaleAmount(), v.getSaleFrom(), v.getSaleTo(), now))
                             .min(Comparator.naturalOrder())
                             .orElse(minOriginal);
 
                     boolean onSale = minFinal.compareTo(minOriginal) < 0;
 
-                    // Color previews (đổi nghĩa: price = min FINAL price theo màu)
+                    // colors: min FINAL price theo màu + sizes theo màu
                     Map<Integer, Color> colorMap = vars.stream()
                             .map(ProductVariant::getColor)
-                            .collect(Collectors.toMap(Color::getId, c -> c, (c1, c2) -> c1));
+                            .filter(Objects::nonNull)
+                            .collect(Collectors.toMap(Color::getId, c -> c, (a, b) -> a));
 
                     List<ColorDTO> colorPreviews = colorMap.values().stream()
                             .map(color -> {
                                 List<ProductVariant> byColor = vars.stream()
-                                        .filter(v -> v.getColor().getId().equals(color.getId()))
+                                        .filter(v -> v.getColor() != null && Objects.equals(v.getColor().getId(), color.getId()))
                                         .toList();
 
-                                // min FINAL price theo màu
                                 BigDecimal minFinalColor = byColor.stream()
-                                        .map(v -> finalPrice(
-                                                v.getPrice(),
-                                                v.getSaleAmount(),
-                                                v.getSaleFrom(),
-                                                v.getSaleTo(),
-                                                now))
+                                        .map(v -> finalPrice(v.getPrice(), v.getSaleAmount(), v.getSaleFrom(), v.getSaleTo(), now))
                                         .min(Comparator.naturalOrder())
                                         .orElse(BigDecimal.ZERO);
 
-                                // sizes theo màu (giữ nguyên)
                                 List<SizeDTO> sizesForColor = byColor.stream()
                                         .map(ProductVariant::getSize)
                                         .filter(Objects::nonNull)
@@ -202,26 +205,17 @@ public class ProductService {
                                         ));
 
                                 String imagePreview = productImageRepository
-                                        .findByProductIdAndColorId(product.getId(), color.getId().longValue())
+                                        .findByProductIdAndColorId(p.getId(), color.getId().longValue())
                                         .stream()
                                         .map(ProductImage::getImageUrl)
                                         .findFirst()
                                         .orElse(null);
 
-                                // GIỮ constructor cũ: ... imagePreview, price, sizes
-                                // => ở đây "price" = minFinalColor để FE hiện đúng giá đang sale
-                                return new ColorDTO(
-                                        color.getId(),
-                                        color.getName(),
-                                        color.getHexCode(),
-                                        imagePreview,
-                                        minFinalColor,
-                                        sizesForColor
-                                );
+                                // price = minFinalColor để FE hiển thị đúng giá đang sale theo màu
+                                return new ColorDTO(color.getId(), color.getName(), color.getHexCode(), imagePreview, minFinalColor, sizesForColor);
                             })
                             .toList();
 
-                    // sizes toàn sp (giữ nguyên)
                     List<SizeDTO> sizes = vars.stream()
                             .map(ProductVariant::getSize)
                             .filter(Objects::nonNull)
@@ -232,58 +226,56 @@ public class ProductService {
                                             .toList()
                             ));
 
-                    // ✅ ProductListDTO mở rộng: thêm finalPrice + onSale
                     return new ProductListDTO(
-                            product.getId(),
-                            product.getName(),
-                            product.getImageUrl(),
-                            minOriginal,          // giá gốc nhỏ nhất
-                            minFinal,             // giá sau sale nhỏ nhất
-                            onSale,               // có đang sale không
+                            p.getId(),
+                            p.getName(),
+                            p.getImageUrl(),
+                            minOriginal,   // price (gốc min)
+                            minFinal,      // finalPrice (sau sale min)
+                            onSale,        // onSale
                             colorPreviews,
                             sizes
                     );
-                    // cần có setter trong DTO
                 })
                 .toList();
 
-        // 3) Lọc khoảng giá theo FINAL price (fallback original nếu null)
+        // Lọc theo khoảng giá dựa trên finalPrice (fallback price)
         if (minPrice != null) {
             dtoList = dtoList.stream()
-                    .filter(p -> {
-                        BigDecimal base = p.getFinalPrice() != null ? p.getFinalPrice() : p.getPrice();
+                    .filter(pd -> {
+                        BigDecimal base = pd.getFinalPrice() != null ? pd.getFinalPrice() : pd.getPrice();
                         return base.compareTo(minPrice) >= 0;
                     })
                     .toList();
         }
         if (maxPrice != null) {
             dtoList = dtoList.stream()
-                    .filter(p -> {
-                        BigDecimal base = p.getFinalPrice() != null ? p.getFinalPrice() : p.getPrice();
+                    .filter(pd -> {
+                        BigDecimal base = pd.getFinalPrice() != null ? pd.getFinalPrice() : pd.getPrice();
                         return base.compareTo(maxPrice) <= 0;
                     })
                     .toList();
         }
 
-        // 4) Sort theo FINAL price khi sort=dummy (giữ cú pháp cũ “price,asc|desc” ở controller)
+        // Sort theo "price,asc|desc" (đang map sang property "dummy" ở Controller)
         if (sort.isSorted()) {
             Sort.Order order = sort.iterator().next();
             if ("dummy".equals(order.getProperty())) {
-                Comparator<ProductListDTO> cmp = Comparator.comparing(p ->
-                        p.getFinalPrice() != null ? p.getFinalPrice() : p.getPrice()
+                Comparator<ProductListDTO> cmp = Comparator.comparing(pd ->
+                        pd.getFinalPrice() != null ? pd.getFinalPrice() : pd.getPrice()
                 );
                 if (order.getDirection().isDescending()) cmp = cmp.reversed();
                 dtoList = dtoList.stream().sorted(cmp).toList();
             }
         }
 
-        // 5) Tự phân trang
+        // Phân trang thủ công
         int start = page * size;
         int end = Math.min(start + size, dtoList.size());
         List<ProductListDTO> pagedList = dtoList.subList(Math.min(start, end), end);
-
         return new PageImpl<>(pagedList, PageRequest.of(page, size, sort), dtoList.size());
     }
+
 
 
 
@@ -442,18 +434,45 @@ public class ProductService {
     }
 
     private ProductAdminDTO toAdminDTO(Product product) {
+        // Nếu product.getVariants() có thể chưa load, cân nhắc fetch từ repo:
+        // List<ProductVariant> variants = productVariantRepository.findByProductId(product.getId());
         List<ProductVariant> variants = product.getVariants();
-        int totalQty = variants.stream().mapToInt(ProductVariant::getQuantity).sum();
 
-        BigDecimal minPrice = variants.stream()
+        // (Tuỳ chọn) chỉ tính trên variant đang bán
+        var actives = variants.stream()
+                .filter(v -> v != null && v.isActive())   // bỏ nếu muốn tính tất cả
+                .toList();
+
+        int totalQty = actives.stream()
+                .map(v -> v.getQuantity() == null ? 0 : v.getQuantity())
+                .mapToInt(Integer::intValue)
+                .sum();
+
+        // Base min/max (giá gốc)
+        BigDecimal minPrice = actives.stream()
                 .map(ProductVariant::getPrice)
+                .filter(Objects::nonNull)
                 .min(BigDecimal::compareTo)
                 .orElse(BigDecimal.ZERO);
 
-        BigDecimal maxPrice = variants.stream()
+        BigDecimal maxPrice = actives.stream()
                 .map(ProductVariant::getPrice)
+                .filter(Objects::nonNull)
                 .max(BigDecimal::compareTo)
                 .orElse(BigDecimal.ZERO);
+
+        // Effective min/max (đã trừ sale nếu đang hiệu lực)
+        BigDecimal eMin = actives.stream()
+                .map(ProductVariant::getEffectivePrice) // dùng helper đã có
+                .filter(Objects::nonNull)
+                .min(BigDecimal::compareTo)
+                .orElse(minPrice);
+
+        BigDecimal eMax = actives.stream()
+                .map(ProductVariant::getEffectivePrice)
+                .filter(Objects::nonNull)
+                .max(BigDecimal::compareTo)
+                .orElse(maxPrice);
 
         return new ProductAdminDTO(
                 product.getId(),
@@ -463,12 +482,15 @@ public class ProductService {
                 product.getGender() == 1 ? "Nam" : product.getGender() == 2 ? "Nữ" : "Unisex",
                 product.getStatus(),
                 product.getCreatedAt(),
-                variants.size(),
+                actives.size(),
                 totalQty,
                 minPrice,
-                maxPrice
+                maxPrice,
+                eMin,
+                eMax
         );
     }
+
 
 
     public Page<ProductAdminDTO> searchAdminProducts(String keyword, String status, Long categoryId, Integer gender, Pageable pageable) {
@@ -551,4 +573,71 @@ public class ProductService {
         productVariantRepository.bulkUpdateSale(productId, amt, req.getSaleFrom(), req.getSaleTo());
     }
 
+    public List<BestsellerDTO> getBestsellers(Integer days, int limit) {
+        if (limit <= 0 || limit > 50) limit = 8;
+
+        StringBuilder sql = new StringBuilder("""
+            SELECT 
+                p.id           AS product_id,
+                p.name         AS name,
+                SUM(oi.quantity) AS total_sold
+            FROM order_item oi
+            JOIN [order] o           ON o.id = oi.order_id
+            JOIN product_variant pv  ON pv.id = oi.variant_id AND pv.deleted = 0
+            JOIN product p           ON p.id = pv.product_id
+            WHERE o.status IN ('DELIVERED')
+        """);
+
+        if (days != null) {
+            sql.append(" AND o.created_at >= DATEADD(DAY, -:days, GETDATE()) ");
+        }
+        sql.append("""
+            GROUP BY p.id, p.name
+            ORDER BY total_sold DESC, p.id DESC
+            OFFSET 0 ROWS FETCH NEXT :limit ROWS ONLY
+        """);
+
+        var q = em.createNativeQuery(sql.toString());
+        if (days != null) q.setParameter("days", days);
+        q.setParameter("limit", limit);
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = q.getResultList();
+        List<BestsellerDTO> result = new ArrayList<>();
+        for (Object[] r : rows) {
+            Long id = ((Number) r[0]).longValue();
+            String name = (String) r[1];
+            Long total = ((Number) r[2]).longValue();
+            result.add(new BestsellerDTO(id, name, total));
+        }
+        return result;
+    }
+    public List<FavoriteDTO> getMostFavorited(int limit) {
+        if (limit <= 0 || limit > 50) limit = 8;
+
+        String sql = """
+        SELECT p.id, p.name, COUNT(f.user_id) AS totalFavorites
+        FROM favorite f
+        JOIN product p ON p.id = f.product_id
+        WHERE p.status = 'ACTIVE'
+        GROUP BY p.id, p.name
+        ORDER BY totalFavorites DESC, p.id DESC
+        OFFSET 0 ROWS FETCH NEXT :limit ROWS ONLY
+    """;
+
+        var q = em.createNativeQuery(sql);
+        q.setParameter("limit", limit);
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = q.getResultList();
+        List<FavoriteDTO> result = new ArrayList<>();
+        for (Object[] r : rows) {
+            result.add(new FavoriteDTO(
+                    ((Number) r[0]).longValue(),
+                    (String) r[1],
+                    ((Number) r[2]).longValue()
+            ));
+        }
+        return result;
+    }
 }

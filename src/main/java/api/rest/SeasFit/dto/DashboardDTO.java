@@ -15,5 +15,6 @@ public class DashboardDTO {
     private int totalProducts;
     private int totalOrders;
     private int lowStockProducts;
+    private int totalVouchers;
     private List<User> latestUsers;
 }

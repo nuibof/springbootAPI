@@ -4,15 +4,21 @@ import api.rest.SeasFit.dto.VoucherRequest;
 import api.rest.SeasFit.dto.VoucherResponse;
 import api.rest.SeasFit.entity.Voucher;
 import api.rest.SeasFit.repository.VoucherRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class VoucherService {
-
+    @PersistenceContext
+    private EntityManager em;
     private final VoucherRepository voucherRepository;
 
     public List<VoucherResponse> getAllVouchers() {
@@ -113,5 +119,43 @@ public class VoucherService {
         } catch (Exception e) {
             throw new RuntimeException("Xóa mã giảm giá thất bại: " + e.getMessage());
         }
+    }
+
+    public Long countVouchers() {
+        return voucherRepository.count();
+    }
+
+    public List<Map<String,Object>> getActiveVouchers() {
+        var q = em.createNativeQuery("""
+        SELECT id, code, description,
+               discount_type, discount_value, max_discount_value,
+               min_order_amount, quantity, 
+               start_date, end_date
+        FROM voucher
+        WHERE is_active = 1
+          AND quantity > 0
+          AND (start_date IS NULL OR start_date <= GETDATE())
+          AND (end_date IS NULL OR end_date >= GETDATE())
+        ORDER BY end_date ASC
+    """);
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = q.getResultList();
+        List<Map<String,Object>> out = new ArrayList<>();
+        for (Object[] r : rows) {
+            var m = new LinkedHashMap<String,Object>();
+            m.put("id", ((Number) r[0]).longValue());
+            m.put("code", (String) r[1]);
+            m.put("description", (String) r[2]);
+            m.put("type", (String) r[3]);               // AMOUNT hoặc PERCENT
+            m.put("value", ((Number) r[4]).longValue()); // số tiền hoặc %
+            m.put("maxValue", r[5] == null ? null : ((Number) r[5]).longValue());
+            m.put("minOrder", r[6] == null ? null : ((Number) r[6]).longValue());
+            m.put("quantity", ((Number) r[7]).intValue());
+            m.put("startDate", String.valueOf(r[8]));
+            m.put("endDate", String.valueOf(r[9]));
+            out.add(m);
+        }
+        return out;
     }
 }

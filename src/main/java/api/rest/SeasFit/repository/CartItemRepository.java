@@ -5,6 +5,8 @@ import api.rest.SeasFit.entity.CartItem;
 import api.rest.SeasFit.entity.ProductVariant;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -31,4 +33,15 @@ public interface CartItemRepository extends JpaRepository<CartItem, Long> {
     // ✅ đúng path: cart.user.id + variant.id in (...)
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     int deleteByCart_User_IdAndVariant_IdIn(Long userId, List<Long> variantIds);
+
+    @Query("""
+  select ci from CartItem ci
+  join fetch ci.variant v
+  join fetch v.product p
+  join fetch v.color c
+  join fetch v.size s
+  where ci.cart = :cart
+""")
+    List<CartItem> findByCartFetchAll(@Param("cart") Cart cart);
+
 }

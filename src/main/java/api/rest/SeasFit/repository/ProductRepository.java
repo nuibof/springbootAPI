@@ -102,4 +102,6 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     where (:q is null or :q = '' or lower(p.name) like lower(concat('%', :q, '%')))
     """)
     Page<FavoriteAdminDTO> pageFavoriteStats(@Param("q") String q, Pageable pageable);
+
+    
 }

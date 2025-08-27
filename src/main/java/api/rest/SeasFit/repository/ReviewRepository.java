@@ -17,4 +17,6 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
     void deleteByProductId(Long productId);
 
     Long countByUserId(Long id);
+
+    boolean existsByUserIdAndProductId(Long userId, Long productId);
 }

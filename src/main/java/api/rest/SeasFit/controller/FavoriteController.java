@@ -4,6 +4,7 @@ import api.rest.SeasFit.dto.FavoriteItemDTO;
 import api.rest.SeasFit.entity.User;
 import api.rest.SeasFit.security.JwtUtil;
 import api.rest.SeasFit.service.FavoriteService;
+import api.rest.SeasFit.service.ProductService;
 import api.rest.SeasFit.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -12,7 +13,10 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/favorite")
@@ -21,6 +25,7 @@ public class FavoriteController {
 
     private final FavoriteService favoriteService;
     private final UserService userService;
+    private final ProductService productService;
     private final JwtUtil jwtUtil;
 
     private ResponseEntity<?> unauthorized(String msg) {
@@ -84,5 +89,19 @@ public class FavoriteController {
         User user = getAuthenticatedUser(authHeader);
         List<FavoriteItemDTO> items = favoriteService.listFavorites(user.getId());
         return ResponseEntity.ok(items);
+    }
+    @GetMapping("/favorites")
+    public List<Map<String, Object>> mostFavorited(
+            @RequestParam(required = false, defaultValue = "8") Integer limit
+    ) {
+        var list = productService.getMostFavorited(limit);
+        return list.stream().map(f -> {
+            var m = new LinkedHashMap<String, Object>();
+            m.put("id", f.getId());
+            m.put("name", f.getName());
+            m.put("totalFavorites", f.getTotalFavorites());
+            m.put("url", "/product/" + f.getId());
+            return m;
+        }).collect(Collectors.toList());
     }
 }
